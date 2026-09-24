@@ -1,6 +1,7 @@
 import React from "react";
 import { Realm, InventoryItem } from "@/types";
 import { playToggleSound } from "@/utils/audio";
+import { assetPath } from "@/utils/assetPath";
 
 interface BackpackProps {
   realm: Realm;
@@ -49,7 +50,7 @@ export default function Backpack({
           {/* Mascot Representation */}
           {realm === "junior" ? (
             <img
-              src="/images/red_panda.png"
+              src={assetPath("/images/red_panda.png")}
               alt="Addie the Red Panda"
               className="w-18 h-18 object-cover rounded-full relative z-20 transition-transform duration-300 group-hover:scale-110 select-none pointer-events-none"
             />

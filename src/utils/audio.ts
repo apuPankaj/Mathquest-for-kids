@@ -1,3 +1,5 @@
+import { assetPath } from "./assetPath";
+
 let audioCtx: AudioContext | null = null;
 
 function getAudioContext(): AudioContext | null {
@@ -56,7 +58,7 @@ export interface BackgroundMusicNodes {
 export function playBackgroundMusic(): BackgroundMusicNodes | null {
   if (typeof window === "undefined") return null;
   try {
-    const audio = new Audio("/audio/bg_music.mp3");
+    const audio = new Audio(assetPath("/audio/bg_music.mp3"));
     audio.loop = true;
     audio.volume = 0.25;
 
