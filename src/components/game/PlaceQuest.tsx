@@ -257,6 +257,13 @@ export default function PlaceQuest({ place, operation, progress, onProgress, onS
         )}
       </div>
 
+      {/* e.g. "4 + 4 + 4" under 3 × 4 — the adding a multiplication stands for */}
+      {operation.subline?.(q, phase === "solved") && (
+        <div data-part="subline" className="-mt-2 mb-4 text-center text-xl font-bold text-amber-200/80 font-fredoka">
+          {operation.subline(q, phase === "solved")}
+        </div>
+      )}
+
       {/* The board: things or dots. In the numbers stage, only when help is needed. */}
       {showBoard && (
         <div className="mb-5">

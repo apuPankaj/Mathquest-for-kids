@@ -18,6 +18,7 @@ import { initialBoard, demoStep, tapItem, tapEmpty, labelFor, bigGroup } from ".
 import * as sub from "../src/lib/subtraction/questions.ts";
 import * as subBoard from "../src/lib/subtraction/board.ts";
 import { PLACES, isOpen, lockedReason } from "../src/lib/game/places.ts";
+import * as mul from "../src/lib/multiplication/questions.ts";
 
 let failures = 0;
 let checks = 0;
@@ -311,6 +312,75 @@ for (const level of [1, 2, 3, 4]) {
   }
 }
 console.log(`counting board: ${boards} demonstrations and child play-throughs run to the end`);
+
+// ---------------------------------------------------------------------------
+// Multiplication questions
+// ---------------------------------------------------------------------------
+
+const mulAllowed = (level, a, b) => mul.pairsFor(level).some(([x, y]) => x === a && y === b);
+for (const [label, rng] of [["seeded", seeded(2028)], ["random", Math.random]]) {
+  for (const level of [1, 2, 3, 4]) {
+    const seen = new Set();
+    const recent = [];
+    let named = 0;
+    let distractors = 0;
+    for (let i = 0; i < N; i++) {
+      const q = mul.makeQuestion(level, rng, recent.slice(-3));
+      const where = `multiplication level ${level} ${q.a}x${q.b}`;
+      seen.add(q.key);
+
+      check(mulAllowed(level, q.a, q.b), `${where}: not an allowed pair`);
+      check(q.answer === q.a * q.b, `${where}: answer ${q.answer}, expected ${q.a * q.b}`);
+      if (level === 1) check(q.a >= 2 && q.a <= 5 && q.b >= 2 && q.b <= 5, `${where}: level 1 outside 2-5 groups of 2-5`);
+      if (level === 2) check([2, 5, 10].includes(q.b) && q.a <= 6, `${where}: level 2 must be groups of 2, 5 or 10`);
+      if (level === 3) check([3, 4].includes(q.a) || [3, 4].includes(q.b), `${where}: level 3 must use the 3s or 4s`);
+      if (level === 4) check(q.a >= 6 && q.a <= 9 && q.b >= 2 && q.b <= 9, `${where}: level 4 must be 6-9 rows`);
+
+      check(q.choices.length === 3, `${where}: ${q.choices.length} choices`);
+      check(new Set(q.choices).size === 3, `${where}: repeated choice ${q.choices}`);
+      check(q.choices.includes(q.answer), `${where}: answer missing from ${q.choices}`);
+      check(q.choices.every((c) => Number.isInteger(c) && c >= 1), `${where}: bad choice in ${q.choices}`);
+      check(q.choices.every((c, j) => j === 0 || q.choices[j - 1] < c), `${where}: choices not in order`);
+
+      for (const c of q.choices.filter((c) => c !== q.answer)) {
+        distractors++;
+        if (mul.diagnose(q, c) !== "other") named++;
+        const hint = mul.hintFor(q, c);
+        check(hint.length > 0, `${where}: no hint for ${c}`);
+        check(!new RegExp(`\\b${q.answer}\\b`).test(hint), `${where}: hint for ${c} gives away the answer: "${hint}"`);
+        check(!/\b1 more rows\b/.test(hint), `${where}: "1 more rows" in "${hint}"`);
+      }
+
+      check(!recent.slice(-3).includes(q.key), `${where}: repeated within 3 questions`);
+      recent.push(q.key);
+
+      const t = mul.twinOf(q, rng);
+      check(t.level === q.level && !(t.a === q.a && t.b === q.b) && mulAllowed(level, t.a, t.b), `${where}: bad twin ${t.a}x${t.b}`);
+      check(t.thing === q.thing, `${where}: twin counts different things`);
+
+      const praise = mul.correctText(q, rng);
+      check(praise.includes(`${q.a} ${mul.unitOf(level)} of ${q.b} make ${q.answer}.`), `${where}: correct text "${praise}"`);
+      if (level === 3 && q.a !== q.b) check(praise.includes(`${q.b} rows of ${q.a} make ${q.answer} too`), `${where}: level 3 should give the turned-around fact`);
+      const line = mul.subline(q, false);
+      if (level === 1) {
+        check(line === Array(q.a).fill(q.b).join(" + "), `${where}: subline "${line}"`);
+        check(mul.subline(q, true) === `${line} = ${q.answer}`, `${where}: solved subline`);
+      } else check(line === null, `${where}: only level 1 has a subline`);
+      for (const stage of ["objects", "pictures", "numbers"]) {
+        check(!new RegExp(`\\b${q.answer}\\b`).test(mul.questionText(q, stage)), `${where}: question gives the answer away`);
+      }
+    }
+    const all = mul.pairsFor(level).length;
+    check(seen.size === all, `multiplication level ${level} (${label}): only ${seen.size} of ${all} questions came up`);
+    console.log(`multiplication level ${level} (${label}): ${N} questions, all ${seen.size}/${all} possible questions used, ` +
+      `${Math.round((100 * named) / distractors)}% of wrong choices are a named mistake`);
+  }
+}
+const mq = (level, a, b) => { let q; const rng = seeded(a * 37 + b); do q = mul.makeQuestion(level, rng); while (q.a !== a || q.b !== b); return q; };
+check(mul.diagnose(mq(1, 3, 4), 7) === "added", "3 × 4 → 7 is adding instead");
+check(mul.diagnose(mq(1, 3, 4), 16) === "groupOff" && mul.diagnose(mq(1, 3, 4), 8) === "groupOff", "3 × 4 → 16 or 8 is one group off");
+check(mul.diagnose(mq(3, 3, 4), 15) === "columnOff", "3 × 4 → 15 (in rows) is the wrong number in each row");
+check(mul.hintFor(mq(4, 7, 6), 48) === "Close! Break it apart: 5 rows of 6, and 2 more rows.", `7 × 6 → 48 hint: "${mul.hintFor(mq(4, 7, 6), 48)}"`);
 
 // ---------------------------------------------------------------------------
 // The subtraction board, for EVERY allowed question in both looks.

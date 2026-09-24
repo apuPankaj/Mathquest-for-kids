@@ -23,5 +23,7 @@ export interface Operation<Q extends Question = Question> {
   correctText(q: Q, rng?: Rng): string;
   // The sum on screen, piece by piece.
   equation(q: Q, solved: boolean): EquationPart[];
+  // An optional small line under the sum, e.g. "4 + 4 + 4" under 3 × 4.
+  subline?(q: Q, solved: boolean): string | null;
   board: BoardKit<Q>;
 }
