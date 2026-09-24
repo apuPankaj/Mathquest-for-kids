@@ -13,6 +13,7 @@ import {
   makeQuestion, twinOf, pairsFor, diagnose, hintFor, questionText, correctText, LEVELS,
 } from "../src/lib/addition/questions.ts";
 import { applyOutcome, freshProgress } from "../src/lib/addition/mastery.ts";
+import { initialBoard, demoStep, tapItem, tapEmpty, labelFor, bigGroup } from "../src/lib/addition/board.ts";
 
 let failures = 0;
 let checks = 0;
@@ -155,6 +156,80 @@ check(r.p.mastered && r.p.stage === "pictures", "a mastered place stays mastered
 
 r = run(["firstTry", "afterHint", "afterShow"]);
 check(r.p.stars === 6, `stars should be 3 + 2 + 1 = 6, got ${r.p.stars}`);
+
+// ---------------------------------------------------------------------------
+// The counting board: every "Show me" must end on the right answer, and a
+// child tapping everything must get there too. Run for EVERY allowed
+// question, in both looks — not a sample.
+// ---------------------------------------------------------------------------
+
+let boards = 0;
+for (const level of [1, 2, 3, 4]) {
+  for (const [a, b] of pairsFor(level)) {
+    // makeQuestion picks at random, so build this exact pair by asking until it comes up.
+    let q;
+    const rng = seeded(a * 100 + b);
+    do q = makeQuestion(level, rng); while (q.a !== a || q.b !== b);
+
+    for (const look of ["objects", "dots"]) {
+      const where = `board level ${level} ${a}+${b} (${look})`;
+      boards++;
+
+      // 1. The demonstration, from the very start.
+      let board = initialBoard(q, look);
+      let lastSay = "";
+      let steps = 0;
+      for (let s = demoStep(board, q); s; s = demoStep(board, q)) {
+        board = s.board;
+        if (s.say) lastSay = s.say;
+        if (++steps > 60) break;
+      }
+      check(steps <= 60, `${where}: demonstration never finished`);
+      check(board.finished, `${where}: demonstration did not say its last line`);
+      check(new RegExp(`\\b${q.total}\\b`).test(lastSay), `${where}: demonstration ended saying "${lastSay}"`);
+      const labels = board.items.map((it) => labelFor(board, q, it)).filter((n) => n !== null);
+      const top = Math.max(...labels);
+      if (q.kind === "missing") {
+        check(board.items.length === 10, `${where}: ten-frame not full after demo`);
+        check(board.items.filter((it) => it.group === "added").length === q.answer, `${where}: demo added the wrong number`);
+        check(top === q.answer, `${where}: labels count to ${top}, not ${q.answer}`);
+      } else if (level === 4) {
+        const to = bigGroup(q) === "a" ? 0 : 1;
+        check(board.items.filter((it) => it.frame === to).length === 10, `${where}: no full ten after demo`);
+        check(board.items.filter((it) => it.frame !== to).length === q.total - 10, `${where}: wrong number left over`);
+        check(top === 10, `${where}: labels count to ${top}, not 10`);
+      } else {
+        check(top === q.total, `${where}: labels count to ${top}, not ${q.total}`);
+        if (level === 2) check(board.startAt === Math.max(a, b), `${where}: count on started at ${board.startAt}`);
+      }
+
+      // 2. A child doing it themselves (objects stage only — pictures are look-and-think).
+      if (look !== "objects") continue;
+      board = initialBoard(q, look);
+      lastSay = "";
+      for (let guard = 0; guard < 60; guard++) {
+        let s = null;
+        if (q.kind === "missing") s = tapEmpty(board, q);
+        else if (!board.joined && level <= 2) s = tapItem(board, q, board.items[0].id);
+        else if (level === 4) {
+          const from = bigGroup(q) === "a" ? 1 : 0;
+          const src = board.items.find((it) => it.frame === from);
+          s = src ? tapItem(board, q, src.id) : null;
+        } else {
+          const next = board.items.find((it) => !board.pre.includes(it.id) && !board.counted.includes(it.id));
+          s = next ? tapItem(board, q, next.id) : null;
+        }
+        if (!s) break;
+        board = s.board;
+        if (s.say) lastSay = s.say;
+      }
+      if (q.kind === "missing") check(lastSay === `${q.answer}. Full!`, `${where}: child filling the ten ended on "${lastSay}"`);
+      else if (level === 4) check(lastSay.startsWith("10!") && lastSay.includes(`${q.total - 10} more`), `${where}: child ended on "${lastSay}"`);
+      else check(lastSay === String(q.total), `${where}: child counting ended on "${lastSay}"`);
+    }
+  }
+}
+console.log(`counting board: ${boards} demonstrations and child play-throughs run to the end`);
 
 // ---------------------------------------------------------------------------
 

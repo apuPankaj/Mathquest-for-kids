@@ -24,7 +24,7 @@ export default function AdventureMap({
         <span className="flex items-center gap-2 text-lg">
           🗺️ Adventure Map: {realm === "junior" ? "Junior Realm Meadows" : "Guardian Peaks"}
         </span>
-        <span className="text-sm font-semibold opacity-75">Click a node to begin a math quest!</span>
+        <span className="text-sm font-semibold opacity-75">Tap a place to play!</span>
       </div>
 
       {/* Canvas Viewport containing nodes */}
@@ -123,7 +123,7 @@ export default function AdventureMap({
                   {node.completed
                     ? "Cleared"
                     : node.unlocked
-                      ? node.questions[0].problem
+                      ? (node.caption ?? node.questions[0]?.problem)
                       : "Locked 🔒"}
                 </span>
               </div>

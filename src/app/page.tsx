@@ -2,11 +2,15 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { Realm, MathNode, InventoryItem } from "@/types";
-import { initialInventory, initialJuniorNodes, initialGuardianNodes } from "@/data/mockData";
+import { initialInventory, initialGuardianNodes } from "@/data/mockData";
 import Header from "@/components/Header";
 import AdventureMap from "@/components/AdventureMap";
 import BattleArena from "@/components/BattleArena";
 import Backpack from "@/components/Backpack";
+import AdditionQuest from "@/components/addition/AdditionQuest";
+import { ADDITION_PLACES, AdditionPlace } from "@/lib/addition/places";
+import { LEVELS } from "@/lib/addition/questions";
+import { PlaceProgress, freshProgress } from "@/lib/addition/mastery";
 import { playToggleSound, playBackgroundMusic, stopBackgroundMusic, BackgroundMusicNodes } from "@/utils/audio";
 
 export default function Dashboard() {
@@ -48,8 +52,25 @@ export default function Dashboard() {
   // 2. Mock Inventory Data
   const [inventory, setInventory] = useState<InventoryItem[]>(initialInventory);
 
-  // 4. Mock Nodes Data for realms
-  const [juniorNodes, setJuniorNodes] = useState<MathNode[]>(initialJuniorNodes);
+  // 4. The Junior realm is the addition path: four places, each opening when
+  // the one before it is mastered.
+  const [additionProgress, setAdditionProgress] = useState<Record<string, PlaceProgress>>({});
+  const [activePlace, setActivePlace] = useState<AdditionPlace | null>(null);
+  const progressOf = (placeId: string) => additionProgress[placeId] ?? freshProgress();
+  const juniorNodes: MathNode[] = ADDITION_PLACES.map((place, i) => ({
+    id: place.id,
+    title: place.title,
+    mathType: "addition",
+    questions: [],
+    reward: 0,
+    unlocked: i === 0 || progressOf(ADDITION_PLACES[i - 1].id).mastered,
+    completed: progressOf(place.id).mastered,
+    caption: LEVELS[place.level].skill,
+    x: place.x,
+    y: place.y,
+  }));
+
+  // The Guardian realm (multiplication and division) is unchanged for now.
   const [guardianNodes, setGuardianNodes] = useState<MathNode[]>(initialGuardianNodes);
 
   // Current active nodes list based on selected realm
@@ -107,11 +128,7 @@ export default function Dashboard() {
           return updated;
         };
 
-        if (realm === "junior") {
-          setJuniorNodes(nodeUpdater);
-        } else {
-          setGuardianNodes(nodeUpdater);
-        }
+        setGuardianNodes(nodeUpdater);
         
         // Play simulated reward ping
         setTimeout(() => {
@@ -142,6 +159,14 @@ export default function Dashboard() {
 
   // 7. Node and Quest handlers
   const handleNodeClick = (node: MathNode) => {
+    if (realm === "junior") {
+      const place = ADDITION_PLACES.find((p) => p.id === node.id);
+      if (place && node.unlocked) {
+        setActivePlace(place);
+        setCurrentView("addition");
+      }
+      return;
+    }
     if (node.unlocked) {
       setActiveQuest(node);
       setCurrentView("arena");
@@ -151,6 +176,7 @@ export default function Dashboard() {
   const handleFlee = () => {
     if (audioGuide) playToggleSound();
     setActiveQuest(null);
+    setActivePlace(null);
     setCurrentView("map");
   };
 
@@ -222,6 +248,16 @@ export default function Dashboard() {
               audioGuide={audioGuide}
             />
           </>
+        ) : currentView === "addition" && activePlace ? (
+          <AdditionQuest
+            key={activePlace.id}
+            place={activePlace}
+            progress={progressOf(activePlace.id)}
+            onProgress={(next) => setAdditionProgress((all) => ({ ...all, [activePlace.id]: next }))}
+            onStars={(n) => setStarShards((s) => s + n)}
+            onExit={handleFlee}
+            soundOn={audioGuide}
+          />
         ) : (
           <BattleArena
             quest={activeQuest}
