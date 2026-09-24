@@ -7,7 +7,9 @@
 //               multiplication as "equal groups"
 //   array     — one grid of rows and columns; multiplication as rows
 // In every layout a "frame" is one box, plate or row, and `cells` is how many
-// spaces it has. Each operation decides what a tap DOES (lib/*/board.ts); the
+// spaces it has. A board can also have a PILE (division): a basket of things
+// waiting to be shared out, drawn above the plates or rows. Things in the
+// pile have frame -1. Each operation decides what a tap DOES (lib/*/board.ts); the
 // screen that draws it is components/game/CountingBoard.tsx.
 
 import type { Question } from "./core.ts";
@@ -19,7 +21,7 @@ export type Group = "a" | "b" | "added";
 export interface Item {
   id: string;
   group: Group; // which number it came from — decides its colour
-  frame: number; // which frame (ten-frame, plate or row) it sits in
+  frame: number; // which frame (ten-frame, plate or row) it sits in; -1 = in the pile
   slot: number; // which space in that frame
 }
 
@@ -28,6 +30,9 @@ export interface Board {
   cells: number; // spaces per frame
   frames: number; // how many frames are drawn
   splitAfter: number | null; // array: draw a gap after this many rows ("break it apart")
+  // Division: draw the pile, and let plates and rows grow as things arrive
+  // instead of showing their empty spaces (which would give the answer away).
+  pile: boolean;
   items: Item[];
   plus: boolean; // draw a "+" between two frames (two numbers being added)
   joined: boolean; // addition 1-2: the two groups have been put together
@@ -43,6 +48,7 @@ export interface Board {
 export const EMPTY_BOARD: Omit<Board, "cells" | "frames" | "items"> = {
   layout: "tenframes",
   splitAfter: null,
+  pile: false,
   plus: false,
   joined: false,
   pre: [],

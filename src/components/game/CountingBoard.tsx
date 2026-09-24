@@ -35,6 +35,7 @@ const SIZES = {
 
 function sizeFor(b: Board): keyof typeof SIZES {
   if (b.layout === "tenframes") return "lg";
+  if (b.pile) return b.items.length > 20 ? "sm" : "md"; // a basket can hold up to 81
   if (b.layout === "groups") return b.cells > 5 ? "sm" : "md";
   return b.cells > 6 || b.frames > 6 ? "sm" : "md";
 }
@@ -134,10 +135,18 @@ export default function CountingBoard({ question: q, kit, look, interactive, dem
     );
   };
 
+  // How many spaces a frame shows. With a pile, plates and rows grow as
+  // things arrive (an empty one keeps one faint space, so it can be seen).
+  const spacesIn = (frame: number) => {
+    if (!board.pile) return board.cells;
+    const onIt = board.items.filter((it) => it.frame === frame);
+    return Math.max(1, ...onIt.map((it) => it.slot + 1));
+  };
+
   // The spaces of one frame (a ten-frame, a plate or a row).
   const renderCells = (frame: number, cellClass: string) => {
     const bySlot = new Map(board.items.filter((it) => it.frame === frame).map((it) => [it.slot, it]));
-    return Array.from({ length: board.cells }, (_, slot) => {
+    return Array.from({ length: spacesIn(frame) }, (_, slot) => {
       const item = bySlot.get(slot);
       return (
         <div key={slot} className={`${size.cell} ${cellClass}`}>
@@ -175,7 +184,7 @@ export default function CountingBoard({ question: q, kit, look, interactive, dem
       key={frame}
       data-part="plate"
       className="grid gap-1 p-2 rounded-[1.25rem] bg-amber-100/10 border-2 border-amber-300/40"
-      style={{ gridTemplateColumns: `repeat(${Math.min(board.cells, 5)}, minmax(0, 1fr))` }}
+      style={{ gridTemplateColumns: `repeat(${Math.min(spacesIn(frame), 5)}, minmax(0, 1fr))` }}
     >
       {renderCells(frame, "bg-emerald-900/40")}
     </div>
@@ -183,11 +192,11 @@ export default function CountingBoard({ question: q, kit, look, interactive, dem
 
   // A grid: one frame per row. A dashed line marks where it has been broken apart.
   const renderArray = () => (
-    <div className="flex flex-col gap-1 p-2 rounded-2xl bg-emerald-950/50 border-2 border-emerald-700/60">
+    <div className="flex flex-col items-start gap-1 p-2 min-w-12 min-h-12 rounded-2xl bg-emerald-950/50 border-2 border-emerald-700/60">
       {Array.from({ length: board.frames }, (_, f) => (
         <React.Fragment key={f}>
           {board.splitAfter !== null && f === board.splitAfter && (
-            <div className="my-1 border-t-2 border-dashed border-amber-300/80" aria-hidden />
+            <div className="self-stretch my-1 border-t-2 border-dashed border-amber-300/80" aria-hidden />
           )}
           <div data-part="row" className="flex gap-1">
             {renderCells(f, "bg-emerald-900/40")}
@@ -197,12 +206,33 @@ export default function CountingBoard({ question: q, kit, look, interactive, dem
     </div>
   );
 
+  // The basket of things waiting to be shared out (division).
+  const pileItems = board.items.filter((it) => it.frame === -1).sort((x, y) => x.slot - y.slot);
+  const renderPile = () => (
+    <div
+      data-part="pile"
+      className="flex flex-wrap justify-center gap-1 p-2 min-h-12 max-w-[22rem] rounded-2xl border-2 border-dashed border-amber-300/50 bg-amber-100/5"
+    >
+      {pileItems.length === 0 ? (
+        <span className="self-center px-2 text-sm font-bold text-amber-200/70">The basket is empty</span>
+      ) : (
+        pileItems.map((it) => (
+          <div key={it.id} className={size.cell}>
+            {renderItem(it)}
+          </div>
+        ))
+      )}
+    </div>
+  );
+
   return (
     <LayoutGroup id={q.key}>
       <div data-part="board" className="flex flex-col items-center gap-3">
         <div className="min-h-7 text-center text-lg font-bold text-amber-100">
           {board.caption ?? (canAct ? kit.instruction(board, q) : "")}
         </div>
+
+        {board.pile && renderPile()}
 
         {board.layout === "array" ? (
           renderArray()
