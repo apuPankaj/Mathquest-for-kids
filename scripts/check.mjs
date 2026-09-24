@@ -20,6 +20,7 @@ import * as subBoard from "../src/lib/subtraction/board.ts";
 import { PLACES, isOpen, lockedReason } from "../src/lib/game/places.ts";
 import * as mul from "../src/lib/multiplication/questions.ts";
 import * as mulBoard from "../src/lib/multiplication/board.ts";
+import * as div from "../src/lib/division/questions.ts";
 
 let failures = 0;
 let checks = 0;
@@ -456,6 +457,79 @@ for (const level of [1, 2, 3, 4]) {
   }
 }
 console.log(`subtraction board: ${subBoards} demonstrations and child play-throughs run to the end`);
+
+// ---------------------------------------------------------------------------
+// Division questions — everything divides exactly, both meanings appear.
+// ---------------------------------------------------------------------------
+
+const divAllowed = (level, a, b) => div.pairsFor(level).some(([x, y]) => x === a && y === b);
+for (const [label, rng] of [["seeded", seeded(2029)], ["random", Math.random]]) {
+  for (const level of [1, 2, 3, 4]) {
+    const seen = new Set();
+    const recent = [];
+    let named = 0;
+    let distractors = 0;
+    for (let i = 0; i < N; i++) {
+      const q = div.makeQuestion(level, rng, recent.slice(-3));
+      const where = `division level ${level} ${q.a}/${q.b}`;
+      seen.add(q.key);
+
+      check(divAllowed(level, q.a, q.b), `${where}: not an allowed pair`);
+      check(Number.isInteger(q.answer) && q.answer * q.b === q.a, `${where}: answer ${q.answer} doesn't divide exactly`);
+      if (level === 1) check(q.b >= 2 && q.b <= 5 && q.answer >= 2 && q.answer <= 5, `${where}: level 1 outside 2-5 friends, 2-5 each`);
+      if (level === 2) check([2, 5, 10].includes(q.b) && q.answer >= 2 && q.answer <= 6, `${where}: level 2 must be groups of 2, 5 or 10`);
+      if (level === 3) check([3, 4].includes(q.b) && q.answer <= 10, `${where}: level 3 must be 3 or 4 rows`);
+      if (level === 4) check(q.answer >= 6 && q.answer <= 9 && q.b >= 2 && q.b <= 9, `${where}: level 4 must be 6-9 rows of 2-9`);
+
+      check(q.choices.length === 3, `${where}: ${q.choices.length} choices`);
+      check(new Set(q.choices).size === 3, `${where}: repeated choice ${q.choices}`);
+      check(q.choices.includes(q.answer), `${where}: answer missing from ${q.choices}`);
+      check(q.choices.every((c) => Number.isInteger(c) && c >= 1), `${where}: bad choice in ${q.choices}`);
+      check(q.choices.every((c, j) => j === 0 || q.choices[j - 1] < c), `${where}: choices not in order`);
+
+      // A hint may name the question's own numbers (and "5 rows"); it must not state the answer otherwise.
+      const own = [q.a, q.b, 5].includes(q.answer);
+      for (const c of q.choices.filter((c) => c !== q.answer)) {
+        distractors++;
+        if (div.diagnose(q, c) !== "other") named++;
+        const hint = div.hintFor(q, c);
+        check(hint.length > 0, `${where}: no hint for ${c}`);
+        check(own || !new RegExp(`\\b${q.answer}\\b`).test(hint), `${where}: hint for ${c} gives away the answer: "${hint}"`);
+      }
+      for (const stage of ["objects", "pictures", "numbers"]) {
+        const text = div.questionText(q, stage);
+        check(q.answer === q.b || !new RegExp(`\\b${q.answer}\\b`).test(text), `${where}: question gives the answer away: "${text}"`);
+      }
+
+      check(!recent.slice(-3).includes(q.key), `${where}: repeated within 3 questions`);
+      recent.push(q.key);
+
+      const t = div.twinOf(q, rng);
+      check(t.level === q.level && !(t.a === q.a && t.b === q.b) && divAllowed(level, t.a, t.b), `${where}: bad twin ${t.a}/${t.b}`);
+      check(t.thing === q.thing, `${where}: twin counts different things`);
+
+      const praise = div.correctText(q, rng);
+      check(new RegExp(`\\b${q.answer}\\b`).test(praise) && praise.includes(String(q.a)), `${where}: correct text "${praise}"`);
+      if (level >= 3) check(praise.includes(`so ${q.a} divided by ${q.b} is ${q.answer}`), `${where}: level ${level} should give the multiplication it undoes`);
+      const line = div.subline(q, false);
+      if (level === 3) check(line === `${q.b} × ? = ${q.a}` && div.subline(q, true) === `${q.b} × ${q.answer} = ${q.a}`, `${where}: subline "${line}"`);
+      else if (level === 4) check(line === `? × ${q.b} = ${q.a}` && div.subline(q, true) === `${q.answer} × ${q.b} = ${q.a}`, `${where}: subline "${line}"`);
+      else check(line === null, `${where}: levels 1-2 have no subline`);
+    }
+    const all = div.pairsFor(level).length;
+    check(seen.size === all, `division level ${level} (${label}): only ${seen.size} of ${all} questions came up`);
+    console.log(`division level ${level} (${label}): ${N} questions, all ${seen.size}/${all} possible questions used, ` +
+      `${Math.round((100 * named) / distractors)}% of wrong choices are a named mistake`);
+  }
+}
+check(div.meaningOf(1) === "sharing" && div.meaningOf(2) === "grouping" && div.meaningOf(3) === "sharing" && div.meaningOf(4) === "grouping",
+  "both meanings of division appear, alternating");
+const dq = (level, a, b) => { let q; const rng = seeded(a * 41 + b); do q = div.makeQuestion(level, rng); while (q.a !== a || q.b !== b); return q; };
+check(div.diagnose(dq(1, 12, 3), 36) === "multiplied", "12 ÷ 3 → 36 is multiplying instead");
+check(div.diagnose(dq(1, 12, 3), 9) === "subtracted", "12 ÷ 3 → 9 is taking away instead");
+check(div.diagnose(dq(1, 12, 3), 3) === "gaveDivisor", "12 ÷ 3 → 3 is giving the number of friends");
+check(div.diagnose(dq(4, 42, 6), 2) === "forgotFive", "42 ÷ 6 → 2 is forgetting the first 5 rows");
+check(div.hintFor(dq(4, 42, 6), 2) === "You found the extra rows. Don't forget the first 5!", "forgot-five hint");
 
 // ---------------------------------------------------------------------------
 // The multiplication board, for EVERY allowed question in both looks.

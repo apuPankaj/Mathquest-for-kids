@@ -9,7 +9,7 @@ import type { EquationPart, Level, Question, Rng, Stage } from "./core.ts";
 import type { BoardKit } from "./board.ts";
 
 export interface Operation<Q extends Question = Question> {
-  id: "addition" | "subtraction" | "multiplication";
+  id: "addition" | "subtraction" | "multiplication" | "division";
   // What a level teaches, in a few words ("Add up to 5").
   skill(level: Level): string;
   makeQuestion(level: Level, rng?: Rng, avoid?: string[]): Q;
