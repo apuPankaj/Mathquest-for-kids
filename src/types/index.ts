@@ -20,6 +20,7 @@ export interface MathNode {
   reward: number;
   unlocked: boolean;
   completed: boolean;
+  caption?: string; // shown under the title on the map; defaults to the first question
   x: number; // percentage from left
   y: number; // percentage from top
 }

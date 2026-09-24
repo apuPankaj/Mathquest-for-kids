@@ -1,19 +1,25 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Realm, MathNode, InventoryItem } from "@/types";
-import { initialInventory, initialJuniorNodes, initialGuardianNodes } from "@/data/mockData";
+import { Realm, MathNode } from "@/types";
+import { initialGuardianNodes } from "@/data/mockData";
 import Header from "@/components/Header";
 import AdventureMap from "@/components/AdventureMap";
 import BattleArena from "@/components/BattleArena";
-import Backpack from "@/components/Backpack";
+import GardenPanel from "@/components/GardenPanel";
+import AdditionQuest from "@/components/addition/AdditionQuest";
+import { ADDITION_PLACES, AdditionPlace } from "@/lib/addition/places";
+import { LEVELS } from "@/lib/addition/questions";
+import { progressOf, updateGame, useSavedGame } from "@/lib/savedGame";
 import { playToggleSound, playBackgroundMusic, stopBackgroundMusic, BackgroundMusicNodes } from "@/utils/audio";
 
 export default function Dashboard() {
   // 1. Core State
   const [realm, setRealm] = useState<Realm>("junior");
-  const [starShards, setStarShards] = useState<number>(120);
-  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  // Progress and star shards are saved on this device (see lib/savedGame.ts).
+  const game = useSavedGame();
+  const starShards = game.starShards;
+  const addShards = (n: number) => updateGame((g) => ({ ...g, starShards: g.starShards + n }));
   const [successAnimation, setSuccessAnimation] = useState<boolean>(false);
   const [answerInput, setAnswerInput] = useState<string>("");
   const [questError, setQuestError] = useState<boolean>(false);
@@ -45,31 +51,27 @@ export default function Dashboard() {
     };
   }, [musicPlaying]);
 
-  // 2. Mock Inventory Data
-  const [inventory, setInventory] = useState<InventoryItem[]>(initialInventory);
+  // 4. The Junior realm is the addition path: four places, each opening when
+  // the one before it is mastered.
+  const [activePlace, setActivePlace] = useState<AdditionPlace | null>(null);
+  const juniorNodes: MathNode[] = ADDITION_PLACES.map((place, i) => ({
+    id: place.id,
+    title: place.title,
+    mathType: "addition",
+    questions: [],
+    reward: 0,
+    unlocked: i === 0 || progressOf(game, ADDITION_PLACES[i - 1].id).mastered,
+    completed: progressOf(game, place.id).mastered,
+    caption: LEVELS[place.level].skill,
+    x: place.x,
+    y: place.y,
+  }));
 
-  // 4. Mock Nodes Data for realms
-  const [juniorNodes, setJuniorNodes] = useState<MathNode[]>(initialJuniorNodes);
+  // The Guardian realm (multiplication and division) is unchanged for now.
   const [guardianNodes, setGuardianNodes] = useState<MathNode[]>(initialGuardianNodes);
 
   // Current active nodes list based on selected realm
   const activeNodes = realm === "junior" ? juniorNodes : guardianNodes;
-
-  // 5. Equip Item Logic
-  const handleEquipItem = (item: InventoryItem) => {
-    if (audioGuide) playToggleSound();
-    const isEquipped = item.equipped;
-    
-    // Toggle equip state
-    const updatedInventory = inventory.map((inv) => {
-      if (inv.id === item.id) {
-        return { ...inv, equipped: !isEquipped };
-      }
-      return inv;
-    });
-    setInventory(updatedInventory);
-    setSelectedItem({ ...item, equipped: !isEquipped });
-  };
 
   // 6. Handle Solve Quest
   const handleAnswerSelect = (option: string, currentQuestionIndex: number, advanceQuestion: () => void) => {
@@ -90,7 +92,7 @@ export default function Dashboard() {
         
         // Award star shards (only if not completed before, or half if completed again)
         const earnedShards = activeQuest.completed ? Math.floor(activeQuest.reward / 5) : activeQuest.reward;
-        setStarShards(prev => prev + earnedShards);
+        addShards(earnedShards);
 
         // Update Node lists to mark completed and unlock next node
         const nodeUpdater = (nodes: MathNode[]) => {
@@ -107,11 +109,7 @@ export default function Dashboard() {
           return updated;
         };
 
-        if (realm === "junior") {
-          setJuniorNodes(nodeUpdater);
-        } else {
-          setGuardianNodes(nodeUpdater);
-        }
+        setGuardianNodes(nodeUpdater);
         
         // Play simulated reward ping
         setTimeout(() => {
@@ -142,6 +140,14 @@ export default function Dashboard() {
 
   // 7. Node and Quest handlers
   const handleNodeClick = (node: MathNode) => {
+    if (realm === "junior") {
+      const place = ADDITION_PLACES.find((p) => p.id === node.id);
+      if (place && node.unlocked) {
+        setActivePlace(place);
+        setCurrentView("addition");
+      }
+      return;
+    }
     if (node.unlocked) {
       setActiveQuest(node);
       setCurrentView("arena");
@@ -151,6 +157,7 @@ export default function Dashboard() {
   const handleFlee = () => {
     if (audioGuide) playToggleSound();
     setActiveQuest(null);
+    setActivePlace(null);
     setCurrentView("map");
   };
 
@@ -198,6 +205,7 @@ export default function Dashboard() {
         audioGuide={audioGuide}
         setAudioGuide={setAudioGuide}
         setSelectedNode={handleFlee}
+        compact={currentView !== "map"}
       />
 
       {/* Main Layout Grid */}
@@ -212,16 +220,21 @@ export default function Dashboard() {
               audioGuide={audioGuide}
             />
 
-            {/* Right Side Panel: Backpack / Inventory Panel (25% on desktop) */}
-            <Backpack
-              realm={realm}
-              inventory={inventory}
-              handleEquipItem={handleEquipItem}
-              selectedItem={selectedItem}
-              setSelectedItem={setSelectedItem}
-              audioGuide={audioGuide}
-            />
+            {/* Right Side Panel: the garden the child has grown (25% on desktop).
+                The backpack (components/Backpack.tsx) is put away for now — its
+                items didn't do anything yet. */}
+            <GardenPanel game={game} />
           </>
+        ) : currentView === "addition" && activePlace ? (
+          <AdditionQuest
+            key={activePlace.id}
+            place={activePlace}
+            progress={progressOf(game, activePlace.id)}
+            onProgress={(next) => updateGame((g) => ({ ...g, places: { ...g.places, [activePlace.id]: next } }))}
+            onStars={addShards}
+            onExit={handleFlee}
+            soundOn={audioGuide}
+          />
         ) : (
           <BattleArena
             quest={activeQuest}

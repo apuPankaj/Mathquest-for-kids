@@ -1,9 +1,14 @@
+import { assetPath } from "./assetPath";
+
 let audioCtx: AudioContext | null = null;
 
 function getAudioContext(): AudioContext | null {
   if (typeof window === "undefined") return null;
   if (!audioCtx) {
-    audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    // Older Safari only has the prefixed name.
+    const Ctx = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return null;
+    audioCtx = new Ctx();
   }
   return audioCtx;
 }
@@ -44,6 +49,11 @@ export function playSuccessSound() {
   }, 80);
 }
 
+export function playLockedSound() {
+  // Low, short buzz: "that place isn't open yet"
+  playBeep(100, "sawtooth", 0.15, 0.05);
+}
+
 export function playToggleSound() {
   // Soft low pop
   playBeep(180, "triangle", 0.08, 0.12);
@@ -56,7 +66,7 @@ export interface BackgroundMusicNodes {
 export function playBackgroundMusic(): BackgroundMusicNodes | null {
   if (typeof window === "undefined") return null;
   try {
-    const audio = new Audio("/audio/bg_music.mp3");
+    const audio = new Audio(assetPath("/audio/bg_music.mp3"));
     audio.loop = true;
     audio.volume = 0.25;
 
