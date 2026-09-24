@@ -1,6 +1,7 @@
-// Checks the addition question maker and the stage rules.
+// Checks the question makers (addition and subtraction), their counting
+// boards, and the stage rules.
 //
-//   npm run check:addition
+//   npm run check
 //
 // Looking at a few questions on screen cannot prove the rules hold — one
 // question looks fine even when the rule behind it is broken. So this makes
@@ -14,6 +15,7 @@ import {
 } from "../src/lib/addition/questions.ts";
 import { applyOutcome, freshProgress } from "../src/lib/game/mastery.ts";
 import { initialBoard, demoStep, tapItem, tapEmpty, labelFor, bigGroup } from "../src/lib/addition/board.ts";
+import * as sub from "../src/lib/subtraction/questions.ts";
 
 let failures = 0;
 let checks = 0;
@@ -112,6 +114,83 @@ for (const [label, rng] of [["seeded", seeded(2026)], ["random", Math.random]]) 
       `${Math.round((100 * named) / distractors)}% of wrong choices are a named mistake`);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Subtraction questions — the same promises, plus: the answer is never 0
+// or below, and level 4 always has to go back through ten.
+// ---------------------------------------------------------------------------
+
+const subAllowed = (level, a, b) => sub.pairsFor(level).some(([x, y]) => x === a && y === b);
+for (const [label, rng] of [["seeded", seeded(2027)], ["random", Math.random]]) {
+  for (const level of [1, 2, 3, 4]) {
+    const seen = new Set();
+    const recent = [];
+    let named = 0;
+    let distractors = 0;
+
+    for (let i = 0; i < N; i++) {
+      const q = sub.makeQuestion(level, rng, recent.slice(-3));
+      const where = `subtraction level ${level} ${q.a}-${q.b}`;
+      seen.add(q.key);
+
+      check(subAllowed(level, q.a, q.b), `${where}: not an allowed pair`);
+      check(q.answer === q.a - q.b, `${where}: answer ${q.answer}, expected ${q.a - q.b}`);
+      check(q.answer >= 1, `${where}: answer ${q.answer} is not at least 1`);
+      if (level === 1) check(q.a <= 5, `${where}: level 1 starts above 5`);
+      if (level === 2) check(q.a >= 6 && q.a <= 10 && q.b <= 3, `${where}: level 2 outside 6-10 or takes more than 3`);
+      if (level === 3) check(q.a === 10, `${where}: level 3 doesn't start at 10`);
+      if (level === 4) check(q.a >= 11 && q.a <= 18 && q.b <= 9 && q.b > q.a - 10 && q.answer < 10,
+        `${where}: level 4 must go back through ten`);
+
+      check(q.choices.length === 3, `${where}: ${q.choices.length} choices`);
+      check(new Set(q.choices).size === 3, `${where}: repeated choice ${q.choices}`);
+      check(q.choices.includes(q.answer), `${where}: answer missing from ${q.choices}`);
+      check(q.choices.every((c) => Number.isInteger(c) && c >= 1), `${where}: bad choice in ${q.choices}`);
+      check(q.choices.every((c, j) => j === 0 || q.choices[j - 1] < c), `${where}: choices not in order`);
+
+      for (const c of q.choices.filter((c) => c !== q.answer)) {
+        distractors++;
+        if (sub.diagnose(q, c) !== "other") named++;
+        const hint = sub.hintFor(q, c);
+        check(hint.length > 0, `${where}: no hint for ${c}`);
+        // A hint may name the question's own numbers; it must not state the answer otherwise.
+        const own = [q.a, q.b, q.a - 10, 10].includes(q.answer);
+        check(own || !new RegExp(`\\b${q.answer}\\b`).test(hint), `${where}: hint for ${c} gives away the answer: "${hint}"`);
+      }
+
+      check(!recent.slice(-3).includes(q.key), `${where}: repeated within 3 questions`);
+      recent.push(q.key);
+
+      const t = sub.twinOf(q, rng);
+      check(t.level === q.level && !(t.a === q.a && t.b === q.b) && subAllowed(level, t.a, t.b), `${where}: bad twin ${t.a}-${t.b}`);
+      check(t.thing === q.thing, `${where}: twin counts different things`);
+
+      for (const stage of ["objects", "pictures", "numbers"]) {
+        const text = sub.questionText(q, stage);
+        // a lone "1" (not the 1 in "11") must never be followed by a plural
+        const loneOne = (word) => new RegExp(`(^|[^0-9])1 ${word}\\b`).test(text);
+        check(!loneOne("are") && (q.thing.one === q.thing.many || !loneOne(q.thing.many)), `${where}: "${text}"`);
+      }
+      const praise = sub.correctText(q, rng);
+      check(praise.includes(`${q.a} take away ${q.b} leaves ${q.answer}.`), `${where}: correct text "${praise}"`);
+      if (level === 3) check(praise.includes(`${q.answer} and ${q.b} make 10`), `${where}: level 3 should say the make-10 fact`);
+    }
+
+    const all = sub.pairsFor(level).length;
+    check(seen.size === all, `subtraction level ${level} (${label}): only ${seen.size} of ${all} questions came up`);
+    console.log(`subtraction level ${level} (${label}): ${N} questions, all ${seen.size}/${all} possible questions used, ` +
+      `${Math.round((100 * named) / distractors)}% of wrong choices are a named mistake`);
+  }
+}
+
+// The four named subtraction mistakes, each on a question where it is unambiguous.
+const sq = (level, a, b) => { let q; const rng = seeded(a * 31 + b); do q = sub.makeQuestion(level, rng); while (q.a !== a || q.b !== b); return q; };
+check(sub.diagnose(sq(4, 14, 6), 12) === "smallerFromLarger", "14 − 6 → 12 is smaller-from-larger");
+check(sub.diagnose(sq(2, 9, 3), 12) === "added", "9 − 3 → 12 is adding instead");
+check(sub.diagnose(sq(2, 9, 3), 7) === "countedStart", "9 − 3 → 7 is counting the starting number");
+check(sub.diagnose(sq(1, 5, 2), 2) === "gaveTaken", "5 − 2 → 2 is giving the number taken away");
+check(sub.hintFor(sq(4, 14, 6), 12) === "You can't take 6 from 4. Take away the 4 first, to get back to 10.",
+  `smaller-from-larger hint: "${sub.hintFor(sq(4, 14, 6), 12)}"`);
 
 // ---------------------------------------------------------------------------
 // Stage rules
