@@ -79,7 +79,10 @@ export default function TenFrameBoard({ question: q, kit, look, interactive, dem
         layoutId={`${q.key}-${item.id}`}
         initial={item.group === "added" ? { scale: 0 } : false}
         animate={{ scale: taken ? 0.85 : 1, opacity: taken ? 0.35 : faded ? 0.55 : 1, y: taken ? [0, -16, 0] : 0 }}
-        transition={{ type: "spring", stiffness: 420, damping: 30 }}
+        // A spring can only move between two positions, so the three-position
+        // "fly up and settle" hop of a taken-away thing uses a timed movement.
+        // (A spring there throws, and the error freezes the stage banner.)
+        transition={{ type: "spring", stiffness: 420, damping: 30, y: { duration: 0.45, ease: "easeOut" } }}
         onClick={() => canAct && !taken && apply(kit.tapItem(boardRef.current, q, item.id))}
         disabled={!canAct || taken}
         aria-label={taken ? "taken away" : label !== null ? String(label) : q.thing.one}

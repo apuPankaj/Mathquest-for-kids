@@ -69,7 +69,10 @@ function takeNext(b: Board, q: SubtractionQuestion): Step | null {
 
   if (countsBack(q)) {
     if (q.level === 4 && remaining === 10) {
-      return { board: { ...board, caption: "Back to 10!" }, say: "10! Back to ten.", pause: 1300 };
+      // Say what comes next in the same line — this caption replaces the
+      // instruction, and this is exactly when the child needs it.
+      const rest = q.b - onesOf(q);
+      return { board: { ...board, caption: `Back to 10! Now take away ${rest} more from the ten.` }, say: "10! Back to ten.", pause: 1300 };
     }
     return { board, say: String(remaining) };
   }
@@ -110,8 +113,10 @@ export function instruction(b: Board, q: SubtractionQuestion): string {
 
 export function labelFor(b: Board, q: SubtractionQuestion, item: Item): number | null {
   const taken = b.taken.indexOf(item.id);
-  // Level 3 numbers the things taken away: 1, 2, 3.
-  if (q.level === 3) return taken >= 0 ? taken + 1 : null;
+  // Level 3 shows how many have gone so far, on the one taken most recently.
+  // (Numbering every one reads "9, 8, 7…" left to right, because they go
+  // from the end — which looks like counting back, a different skill.)
+  if (q.level === 3) return taken >= 0 && taken === b.taken.length - 1 ? b.taken.length : null;
   if (taken >= 0) return null;
   // Level 1 numbers what is left as the child counts it.
   if (q.level === 1) {
