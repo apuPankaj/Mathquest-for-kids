@@ -146,7 +146,7 @@ export default function CountingBoard({ question: q, kit, look, interactive, dem
           ) : fillable ? (
             <button
               type="button"
-              onClick={() => apply(kit.tapEmpty(boardRef.current, q))}
+              onClick={() => apply(kit.tapEmpty(boardRef.current, q, frame))}
               aria-label="Fill this space"
               className="w-full h-full rounded-[inherit] border-2 border-dashed border-sky-300/70 animate-pulse cursor-pointer"
             />

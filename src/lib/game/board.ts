@@ -89,8 +89,9 @@ export interface BoardKit<Q extends Question = Question> {
   // The child tapped a thing on the board.
   tapItem(b: Board, q: Q, id: string): Step | null;
   // Can empty spaces be tapped to fill them, and what happens when they are.
+  // `frame` is the ten-frame, plate or row the tapped space belongs to.
   canFill(b: Board, q: Q): boolean;
-  tapEmpty(b: Board, q: Q): Step | null;
+  tapEmpty(b: Board, q: Q, frame: number): Step | null;
   // The number shown on a thing, if any.
   labelFor(b: Board, q: Q, item: Item): number | null;
   // The next step of "Show me", or null when it is over.

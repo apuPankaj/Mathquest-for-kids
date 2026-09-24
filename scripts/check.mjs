@@ -19,6 +19,7 @@ import * as sub from "../src/lib/subtraction/questions.ts";
 import * as subBoard from "../src/lib/subtraction/board.ts";
 import { PLACES, isOpen, lockedReason } from "../src/lib/game/places.ts";
 import * as mul from "../src/lib/multiplication/questions.ts";
+import * as mulBoard from "../src/lib/multiplication/board.ts";
 
 let failures = 0;
 let checks = 0;
@@ -455,6 +456,108 @@ for (const level of [1, 2, 3, 4]) {
   }
 }
 console.log(`subtraction board: ${subBoards} demonstrations and child play-throughs run to the end`);
+
+// ---------------------------------------------------------------------------
+// The multiplication board, for EVERY allowed question in both looks.
+// ---------------------------------------------------------------------------
+
+let mulBoards = 0;
+const shuffled = (xs, rng) => xs.map((x) => [rng(), x]).sort((p, q) => p[0] - q[0]).map((p) => p[1]);
+for (const level of [1, 2, 3, 4]) {
+  for (const [a, b] of mul.pairsFor(level)) {
+    const q = mq(level, a, b);
+    const rng = seeded(a * 101 + b);
+    const labels = (bd) => bd.items.map((it) => mulBoard.labelFor(bd, q, it)).filter((n) => n !== null);
+
+    for (const look of ["objects", "dots"]) {
+      const where = `multiplication board level ${level} ${a}x${b} (${look})`;
+      mulBoards++;
+      let board = mulBoard.initialBoard(q, look);
+      if (look === "dots") {
+        check(board.items.length === a * b, `${where}: pictures should show all ${a * b}`);
+        check(labels(board).length === 0, `${where}: pictures show a number before anything is counted`);
+        if (level === 4) check(board.splitAfter === 5, `${where}: pictures should arrive broken apart`);
+      }
+
+      // 1. "Show me".
+      const sayings = [];
+      let steps = 0;
+      for (let s = mulBoard.demoStep(board, q); s; s = mulBoard.demoStep(board, q)) {
+        board = s.board;
+        if (s.say) sayings.push(s.say);
+        if (++steps > 40) break;
+      }
+      check(steps <= 40 && board.finished, `${where}: demonstration never finished`);
+      check(new RegExp(`\\b${q.answer}\\b`).test(sayings.at(-1) ?? ""), `${where}: demonstration ended "${sayings.at(-1)}"`);
+      check(board.items.length === a * b, `${where}: demonstration ended with ${board.items.length} things, not ${a * b}`);
+      if (level <= 2) check(Math.max(...labels(board)) === q.answer, `${where}: labels end at ${Math.max(...labels(board))}`);
+      if (level === 2) check(sayings.slice(0, a).join() === Array.from({ length: a }, (_, i) => String((i + 1) * b)).join(), `${where}: skip counted ${sayings.slice(0, a)}`);
+      if (level === 3 && a !== b) check(board.frames === b && board.cells === a, `${where}: demonstration should end turned around`);
+      if (level === 4) {
+        check(labels(board).sort((x, y) => x - y).join() === [5 * b, (a - 5) * b].sort((x, y) => x - y).join(), `${where}: parts ${labels(board)}`);
+        check(board.items.every((it) => it.group === (it.frame >= 5 ? "b" : "a")), `${where}: rows below the break should be gold`);
+      }
+
+      // 2. A child tapping, in a random order (objects only).
+      if (look !== "objects") continue;
+      board = mulBoard.initialBoard(q, look);
+      let last = "";
+      if (level === 1) {
+        check(board.items.length === 0, `${where}: plates should start empty`);
+        for (const f of shuffled([...Array(a).keys()], rng)) {
+          const s = mulBoard.tapEmpty(board, q, f);
+          if (!s) { check(false, `${where}: plate ${f} would not fill`); break; }
+          board = s.board; last = s.say;
+          check(board.items.filter((it) => it.frame === f).length === b, `${where}: plate ${f} got the wrong number`);
+        }
+        check(last === (a > 1 ? `${q.answer - b} and ${b} is ${q.answer}.` : String(q.answer)), `${where}: filling ended "${last}"`);
+        check(mulBoard.tapEmpty(board, q, 0) === null, `${where}: a full plate filled again`);
+      } else if (level <= 3) {
+        for (const f of shuffled([...Array(a).keys()], rng)) {
+          const item = board.items.find((it) => it.frame === f);
+          const s = mulBoard.tapItem(board, q, item.id);
+          board = s.board; last = s.say;
+        }
+        check(last === String(q.answer), `${where}: counting ended "${last}", not ${q.answer}`);
+        check(Math.max(...labels(board)) === q.answer, `${where}: labels end at ${Math.max(...labels(board))}`);
+      } else {
+        board = mulBoard.tapItem(board, q, board.items[0].id).board; // breaks it apart
+        check(board.splitAfter === 5, `${where}: first tap should break it apart`);
+        const bottomFirst = rng() < 0.5;
+        for (const part of bottomFirst ? ["bottom", "top"] : ["top", "bottom"]) {
+          const item = board.items.find((it) => (part === "top" ? it.frame < 5 : it.frame >= 5));
+          const s = mulBoard.tapItem(board, q, item.id);
+          board = s.board; last = s.say;
+        }
+        const [p1, p2] = [5 * b, (a - 5) * b];
+        check(last.endsWith(`Now add ${p1} and ${p2}.`), `${where}: parts ended "${last}"`);
+        check(!new RegExp(`\\b${q.answer}\\b`).test(last) || [p1, p2].includes(q.answer), `${where}: the child's own tapping gives the sum away: "${last}"`);
+      }
+
+      // 3. Turning around never adds or takes away (level 3), and twice is back where it started.
+      if (level === 3) {
+        const start = mulBoard.initialBoard(q, "objects");
+        const once = mulBoard.turnAround(start);
+        const twice = mulBoard.turnAround(once);
+        check(once.items.length === a * b && once.frames === b && once.cells === a, `${where}: turning changed the count or shape`);
+        check(once.items.every((it) => it.frame < b && it.slot < a), `${where}: a thing fell outside the turned grid`);
+        check(new Set(once.items.map((it) => `${it.frame},${it.slot}`)).size === a * b, `${where}: two things landed in one space`);
+        check(JSON.stringify(twice.items) === JSON.stringify(start.items), `${where}: turning twice isn't the start again`);
+        // Counting after turning gives the same answer.
+        let t = once;
+        let lastT = "";
+        for (let f = 0; f < b; f++) {
+          const row = t.items.find((it) => it.frame === f);
+          if (!row) { check(false, `${where}: turned row ${f} is empty`); break; }
+          const s = mulBoard.tapItem(t, q, row.id);
+          t = s.board; lastT = s.say;
+        }
+        check(lastT === String(q.answer), `${where}: counting the turned grid gave ${lastT}`);
+      }
+    }
+  }
+}
+console.log(`multiplication board: ${mulBoards} demonstrations and child play-throughs run to the end`);
 
 // ---------------------------------------------------------------------------
 // Which places are open
