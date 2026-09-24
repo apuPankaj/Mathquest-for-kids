@@ -21,6 +21,7 @@ import { PLACES, isOpen, lockedReason } from "../src/lib/game/places.ts";
 import * as mul from "../src/lib/multiplication/questions.ts";
 import * as mulBoard from "../src/lib/multiplication/board.ts";
 import * as div from "../src/lib/division/questions.ts";
+import * as divBoard from "../src/lib/division/board.ts";
 
 let failures = 0;
 let checks = 0;
@@ -632,6 +633,78 @@ for (const level of [1, 2, 3, 4]) {
   }
 }
 console.log(`multiplication board: ${mulBoards} demonstrations and child play-throughs run to the end`);
+
+// ---------------------------------------------------------------------------
+// The division board, for EVERY allowed question in both looks.
+// ---------------------------------------------------------------------------
+
+let divBoards = 0;
+// Nothing created, lost or stacked; everything either in the basket or in exactly one space.
+function divIntact(bd, q, where) {
+  check(bd.items.length === q.a, `${where}: ${bd.items.length} things, not ${q.a}`);
+  check(new Set(bd.items.map((it) => it.id)).size === q.a, `${where}: a thing appears twice`);
+  const placed = bd.items.filter((it) => it.frame >= 0);
+  check(new Set(placed.map((it) => `${it.frame},${it.slot}`)).size === placed.length, `${where}: two things in one space`);
+  check(placed.every((it) => it.frame < bd.frames), `${where}: a thing sits outside the plates/rows`);
+}
+// Shared out completely and fairly: the right number of plates/rows, all equal.
+function divDone(bd, q, where) {
+  const per = Array.from({ length: bd.frames }, (_, f) => bd.items.filter((it) => it.frame === f).length);
+  check(bd.items.every((it) => it.frame >= 0), `${where}: things left in the basket`);
+  if (q.level === 1 || q.level === 3) check(bd.frames === q.b && per.every((n) => n === q.answer), `${where}: shared unevenly ${per}`);
+  else check(bd.frames === q.answer && per.every((n) => n === q.b), `${where}: groups/rows ${per}, expected ${q.answer} of ${q.b}`);
+  if (q.level === 4) check(bd.splitAfter === 5 && bd.items.every((it) => it.group === (it.frame >= 5 ? "b" : "a")), `${where}: the extra rows should be gold, after a break at 5`);
+}
+for (const level of [1, 2, 3, 4]) {
+  for (const [a, b] of div.pairsFor(level)) {
+    const q = dq(level, a, b);
+    const labels = (bd) => bd.items.map((it) => divBoard.labelFor(bd, q, it)).filter((n) => n !== null);
+    for (const look of ["objects", "dots"]) {
+      const where = `division board level ${level} ${a}/${b} (${look})`;
+      divBoards++;
+      let board = divBoard.initialBoard(q, look);
+      divIntact(board, q, where);
+      if (look === "dots") {
+        divDone(board, q, `${where} pictures`);
+        check(labels(board).length === 0, `${where}: finished pictures show a number`);
+      } else {
+        check(board.items.every((it) => it.frame === -1), `${where}: everything should start in the basket`);
+      }
+
+      // 1. "Show me": back into the basket, then shared out, then the fact.
+      const sayings = [];
+      let steps = 0;
+      for (let s = divBoard.demoStep(board, q); s; s = divBoard.demoStep(board, q)) {
+        board = s.board;
+        divIntact(board, q, `${where} demo step ${steps}`);
+        if (s.say) sayings.push(s.say);
+        if (++steps > 40) break;
+      }
+      check(steps <= 40 && board.finished, `${where}: demonstration never finished`);
+      check(sayings[0] === `Start with ${a} in the basket.`, `${where}: demonstration should start from the basket ("${sayings[0]}")`);
+      check(new RegExp(`\\b${q.answer}\\b`).test(sayings.at(-1)), `${where}: demonstration ended "${sayings.at(-1)}"`);
+      divDone(board, q, `${where} after demo`);
+
+      // 2. A child tapping (objects only).
+      if (look !== "objects") continue;
+      board = divBoard.initialBoard(q, look);
+      let last = "";
+      for (let guard = 0; guard < 40; guard++) {
+        const s = divBoard.tapItem(board, q);
+        if (!s) break;
+        board = s.board; last = s.say;
+        divIntact(board, q, `${where} tap ${guard}`);
+      }
+      divDone(board, q, `${where} after tapping`);
+      check(/The basket is empty!|None left!/.test(last), `${where}: tapping ended "${last}"`);
+      const top = Math.max(...labels(board));
+      if (level === 1 || level === 3) check(labels(board).every((n) => n === q.answer), `${where}: plates labelled ${labels(board)}`);
+      else check(top === q.answer, `${where}: labels end at ${top}`);
+      check(divBoard.tapItem(board, q) === null && divBoard.action(board, q) === null, `${where}: can still share from an empty basket`);
+    }
+  }
+}
+console.log(`division board: ${divBoards} demonstrations and child play-throughs run to the end`);
 
 // ---------------------------------------------------------------------------
 // Which places are open
