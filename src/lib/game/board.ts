@@ -1,25 +1,33 @@
 // The shape of the counting board, shared by every operation.
 //
-// The board is one or two TEN-FRAMES: boxes of 10 spaces in two rows of five
-// (the easiest levels use a single row of five). Each operation decides what
-// a tap DOES (lib/addition/board.ts, lib/subtraction/board.ts); the screen
-// that draws it is components/game/TenFrameBoard.tsx.
+// A board is drawn in one of three layouts:
+//   tenframes — boxes of 10 spaces in two rows of five (or one row of five);
+//               addition and subtraction
+//   groups    — separate plates, each holding the same number of things;
+//               multiplication as "equal groups"
+//   array     — one grid of rows and columns; multiplication as rows
+// In every layout a "frame" is one box, plate or row, and `cells` is how many
+// spaces it has. Each operation decides what a tap DOES (lib/*/board.ts); the
+// screen that draws it is components/game/CountingBoard.tsx.
 
 import type { Question } from "./core.ts";
 
 export type Look = "objects" | "dots";
+export type Layout = "tenframes" | "groups" | "array";
 export type Group = "a" | "b" | "added";
 
 export interface Item {
   id: string;
   group: Group; // which number it came from — decides its colour
-  frame: number; // which ten-frame it sits in (0 or 1)
-  slot: number; // which space in that frame (0 to 9)
+  frame: number; // which frame (ten-frame, plate or row) it sits in
+  slot: number; // which space in that frame
 }
 
 export interface Board {
-  cells: 5 | 10; // spaces per frame
+  layout: Layout;
+  cells: number; // spaces per frame
   frames: number; // how many frames are drawn
+  splitAfter: number | null; // array: draw a gap after this many rows ("break it apart")
   items: Item[];
   plus: boolean; // draw a "+" between two frames (two numbers being added)
   joined: boolean; // addition 1-2: the two groups have been put together
@@ -33,6 +41,8 @@ export interface Board {
 }
 
 export const EMPTY_BOARD: Omit<Board, "cells" | "frames" | "items"> = {
+  layout: "tenframes",
+  splitAfter: null,
   plus: false,
   joined: false,
   pre: [],

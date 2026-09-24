@@ -6,7 +6,7 @@ import { Outcome, PlaceProgress, STAGES, STREAK_TO_MOVE_UP, applyOutcome, starsF
 import type { Place } from "@/lib/game/places";
 import { speak, stopSpeaking } from "@/lib/speech";
 import { playSuccessSound } from "@/utils/audio";
-import TenFrameBoard from "./TenFrameBoard";
+import CountingBoard from "./CountingBoard";
 import AnswerChoices from "./AnswerChoices";
 import NumberPad from "./NumberPad";
 
@@ -260,7 +260,7 @@ export default function PlaceQuest({ place, operation, progress, onProgress, onS
       {/* The board: things or dots. In the numbers stage, only when help is needed. */}
       {showBoard && (
         <div className="mb-5">
-          <TenFrameBoard
+          <CountingBoard
             key={`${current.serial}-${stage}`}
             question={q}
             kit={operation.board}
