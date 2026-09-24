@@ -14,17 +14,27 @@ const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "✓"];
 
 export default function NumberPad({ reveal, locked, onSubmit }: NumberPadProps) {
   const [value, setValue] = useState("");
+  // The typed number is also kept in a ref, updated the instant a key is
+  // pressed. Two keys pressed faster than the screen redraws (a "1" and then
+  // Enter) must still see each other — otherwise Enter reads the old, empty
+  // value and the answer is silently ignored.
+  const valueRef = useRef("");
+  const update = (v: string) => {
+    valueRef.current = v;
+    setValue(v);
+  };
 
   const press = (key: string) => {
     if (locked) return;
+    const v = valueRef.current;
     if (key === "⌫") {
-      setValue((v) => v.slice(0, -1));
+      update(v.slice(0, -1));
     } else if (key === "✓") {
-      if (value === "") return;
-      onSubmit(Number(value));
-      setValue("");
-    } else if (value.length < 2) {
-      setValue((v) => (v === "0" ? key : v + key));
+      if (v === "") return;
+      update("");
+      onSubmit(Number(v));
+    } else if (v.length < 2) {
+      update(v === "0" ? key : v + key);
     }
   };
 

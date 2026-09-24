@@ -60,7 +60,7 @@ export default function TenFrameBoard({ question: q, look, interactive, demo, on
       if (step.say) sayRef.current(step.say);
       timer = setTimeout(tick, step.pause ?? 850);
     };
-    timer = setTimeout(tick, 600);
+    timer = setTimeout(tick, 1400); // let "Let me show you" finish first
     return () => clearTimeout(timer);
   }, [demo, q]);
 

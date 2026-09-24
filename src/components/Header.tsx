@@ -69,14 +69,16 @@ export default function Header({
         <div className="flex gap-2 bg-white/80 backdrop-blur-md px-3 py-2 rounded-2xl shadow-sm border border-emerald-100">
           <button 
             onClick={handleMusicClick} 
-            title="Toggle Music"
+            title="Music on or off"
+            aria-label="Music on or off"
             className={`p-2 rounded-xl transition-all duration-200 text-lg ${musicPlaying ? 'bg-emerald-500 text-white animate-pulse' : 'bg-slate-100 hover:bg-slate-200 text-slate-500'}`}
           >
             🎵
           </button>
           <button 
             onClick={handleAudioGuideClick} 
-            title="Toggle Audio Guide"
+            title="Voice and sounds on or off"
+            aria-label="Voice and sounds on or off"
             className={`p-2 rounded-xl transition-all duration-200 text-lg ${audioGuide ? 'bg-emerald-500 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-500'}`}
           >
             🔊

@@ -1,8 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { AdditionQuestion, LEVELS, Stage, correctText, makeQuestion } from "@/lib/addition/questions";
-import { PlaceProgress, STAGES, STREAK_TO_MOVE_UP, applyOutcome, starsFor } from "@/lib/addition/mastery";
+import {
+  AdditionQuestion, LEVELS, Stage, correctText, hintFor, makeQuestion, questionText, twinOf,
+} from "@/lib/addition/questions";
+import { Outcome, PlaceProgress, STAGES, STREAK_TO_MOVE_UP, applyOutcome, starsFor } from "@/lib/addition/mastery";
 import type { AdditionPlace } from "@/lib/addition/places";
+import { speak, stopSpeaking } from "@/lib/speech";
 import { playSuccessSound } from "@/utils/audio";
 import TenFrameBoard from "./TenFrameBoard";
 import AnswerChoices from "./AnswerChoices";
@@ -12,6 +15,12 @@ import NumberPad from "./NumberPad";
 //   objects  — real things on the board, which the child taps to count
 //   pictures — coloured dots on the board, to look at and think
 //   numbers  — just the sum, typed on a number pad
+//
+// When an answer is wrong, the game helps instead of just saying "try again":
+//   1st wrong answer → a spoken hint that matches the mistake
+//   2nd wrong answer → "Show me": the board works it out step by step, the
+//                      right answer lights up, and then comes a TWIN question
+//                      (nearly the same) for the child to do on their own
 // The rules for moving between stages are in lib/addition/mastery.ts.
 
 interface AdditionQuestProps {
@@ -30,7 +39,11 @@ interface Current {
   q: AdditionQuestion;
   stage: Stage;
   serial: number; // makes the board start fresh even if a question repeats later
+  intro: string | null; // said before the question, e.g. for a twin
 }
+
+// asking → (wrong) hinted → (wrong) showing → revealed → solved
+type Phase = "asking" | "hinted" | "showing" | "revealed" | "solved";
 
 const STAGE_LABEL: Record<Stage, { icon: string; name: string }> = {
   objects: { icon: "🥭", name: "Things" },
@@ -44,69 +57,133 @@ const MOVED_UP: Record<Stage, string> = {
   numbers: "Amazing! Now just the numbers.",
 };
 
+const MOVED_BACK: Record<Stage, string> = {
+  objects: "Let's count real things again for a little while.",
+  pictures: "Let's use the dots again for a little while.",
+  numbers: "",
+};
+
 export default function AdditionQuest({ place, progress, onProgress, onStars, onExit, soundOn }: AdditionQuestProps) {
   const [current, setCurrent] = useState<Current>(() => ({
     q: makeQuestion(place.level),
     stage: progress.stage,
     serial: 0,
+    intro: null,
   }));
+  const [phase, setPhase] = useState<Phase>("asking");
   const [tried, setTried] = useState<number[]>([]);
-  const [solved, setSolved] = useState(false);
   const [earned, setEarned] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
   const [celebrate, setCelebrate] = useState(false);
 
-  const recent = useRef<string[]>([current.q.key]);
+  const { q, stage } = current;
+
+  // The voice switch can change mid-question, so speech reads it through a ref.
+  const soundRef = useRef(soundOn);
+  useEffect(() => {
+    soundRef.current = soundOn;
+  });
+  const say = (text: string) => {
+    if (soundRef.current) speak(text);
+  };
+
+  // Timers for "next question" etc., all cancelled if the child leaves.
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   useEffect(() => {
     const pending = timers.current;
-    return () => pending.forEach(clearTimeout);
+    return () => {
+      pending.forEach(clearTimeout);
+      stopSpeaking();
+    };
   }, []);
   const later = (fn: () => void, ms: number) => timers.current.push(setTimeout(fn, ms));
 
-  const { q, stage } = current;
+  // Read each new question aloud.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const text = questionText(current.q, current.stage);
+      if (soundRef.current) speak(current.intro ? `${current.intro} ${text}` : text);
+    }, 450);
+    return () => clearTimeout(t);
+  }, [current]);
 
-  const nextQuestion = (nextStage: Stage) => {
-    const nq = makeQuestion(place.level, Math.random, recent.current.slice(-3));
+  const recent = useRef<string[]>([current.q.key]);
+
+  const nextQuestion = (nextStage: Stage, twinFrom: AdditionQuestion | null) => {
+    const nq = twinFrom ? twinOf(twinFrom) : makeQuestion(place.level, Math.random, recent.current.slice(-3));
     recent.current.push(nq.key);
-    setCurrent((c) => ({ q: nq, stage: nextStage, serial: c.serial + 1 }));
+    const intro = twinFrom ? "Now you try one like it." : null;
+    setCurrent((c) => ({ q: nq, stage: nextStage, serial: c.serial + 1, intro }));
+    setPhase("asking");
     setTried([]);
-    setSolved(false);
     setEarned(0);
-    setMessage(null);
+    setMessage(intro);
   };
 
+  const revealText = `Now ${stage === "numbers" ? "type" : "tap"} ${q.answer}!`;
+
   const answer = (n: number) => {
-    if (solved) return;
+    if (phase === "solved" || phase === "showing") return;
 
     if (n !== q.answer) {
-      setTried((t) => [...t, n]);
-      setMessage("Not quite. Try again!");
+      if (phase === "revealed") {
+        say(revealText);
+        return;
+      }
+      const nowTried = [...tried, n];
+      setTried(nowTried);
+      if (nowTried.length === 1) {
+        const hint = hintFor(q, n);
+        setPhase("hinted");
+        setMessage(hint);
+        say(hint);
+      } else {
+        setPhase("showing");
+        setMessage("Watch! Let me show you.");
+        say("Let me show you.");
+      }
       return;
     }
 
-    const outcome = tried.length === 0 ? "firstTry" : "afterHint";
+    const outcome: Outcome = tried.length === 0 ? "firstTry" : phase === "revealed" ? "afterShow" : "afterHint";
     const { next, event } = applyOutcome(progress, outcome);
     onProgress(next);
     onStars(starsFor(outcome));
     setEarned(starsFor(outcome));
-    setSolved(true);
-    setMessage(correctText(q));
+    setPhase("solved");
+    const praise = correctText(q);
+    setMessage(praise);
+    say(praise);
     if (soundOn) playSuccessSound();
 
     if (event === "mastered") {
-      later(() => setCelebrate(true), 1200);
+      later(() => setCelebrate(true), 1800);
       return;
     }
-    if (event === "movedUp") {
-      later(() => setBanner(MOVED_UP[next.stage]), 1200);
-      later(() => setBanner(null), 3800);
+    const bannerText = event === "movedUp" ? MOVED_UP[next.stage] : event === "movedBack" ? MOVED_BACK[next.stage] : null;
+    if (bannerText) {
+      later(() => {
+        setBanner(bannerText);
+        say(bannerText);
+      }, 1800);
+      later(() => setBanner(null), 4600);
     }
-    later(() => nextQuestion(next.stage), event === "movedUp" ? 3800 : 1900);
+    // After being shown, the next question is a twin of this one.
+    const twinFrom = outcome === "afterShow" ? q : null;
+    later(() => nextQuestion(next.stage, twinFrom), bannerText ? 4600 : 2400);
+  };
+
+  const onDemoDone = () => {
+    setPhase("revealed");
+    setMessage(revealText);
+    say(revealText);
   };
 
   const stageIndex = STAGES.indexOf(stage);
+  const showing = phase === "showing";
+  // In the numbers stage the dots appear only once the child needs help.
+  const showBoard = stage !== "numbers" || tried.length > 0;
 
   return (
     <div className="w-full lg:col-span-4 rounded-3xl border-4 border-amber-500/30 bg-[#064e3b] shadow-2xl p-4 sm:p-6 relative min-h-[560px] text-amber-50 overflow-hidden">
@@ -145,54 +222,84 @@ export default function AdditionQuest({ place, progress, onProgress, onStars, on
         ))}
       </div>
 
-      {/* The sum, coloured to match the board */}
-      <div data-part="equation" className="text-center text-6xl sm:text-7xl font-black font-fredoka drop-shadow-[0_4px_6px_rgba(0,0,0,0.5)] mb-4 select-none">
-        {q.kind === "missing" ? (
-          <>
-            <span className="text-emerald-300">{q.a}</span> <span className="text-amber-200">+</span>{" "}
-            <span className="text-sky-300">{solved ? q.answer : "?"}</span> <span className="text-amber-200">=</span>{" "}
-            <span className="text-amber-100">10</span>
-          </>
-        ) : (
-          <>
-            <span className="text-emerald-300">{q.a}</span> <span className="text-amber-200">+</span>{" "}
-            <span className="text-amber-300">{q.b}</span> <span className="text-amber-200">=</span>{" "}
-            <span className="text-amber-100">{solved ? q.answer : "?"}</span>
-          </>
+      {/* The sum, coloured to match the board, and a button to hear it again */}
+      <div className="flex items-center justify-center gap-3 mb-4">
+        <div data-part="equation" className="text-center text-6xl sm:text-7xl font-black font-fredoka drop-shadow-[0_4px_6px_rgba(0,0,0,0.5)] select-none">
+          {q.kind === "missing" ? (
+            <>
+              <span className="text-emerald-300">{q.a}</span> <span className="text-amber-200">+</span>{" "}
+              <span className="text-sky-300">{phase === "solved" ? q.answer : "?"}</span> <span className="text-amber-200">=</span>{" "}
+              <span className="text-amber-100">10</span>
+            </>
+          ) : (
+            <>
+              <span className="text-emerald-300">{q.a}</span> <span className="text-amber-200">+</span>{" "}
+              <span className="text-amber-300">{q.b}</span> <span className="text-amber-200">=</span>{" "}
+              <span className="text-amber-100">{phase === "solved" ? q.answer : "?"}</span>
+            </>
+          )}
+        </div>
+        {soundOn && (
+          <button
+            type="button"
+            onClick={() => say(questionText(q, stage))}
+            aria-label="Hear the question again"
+            className="w-12 h-12 shrink-0 rounded-full bg-sky-500 hover:bg-sky-400 text-2xl shadow-[0_4px_0_#0369a1] active:shadow-none active:translate-y-1"
+          >
+            🔊
+          </button>
         )}
       </div>
 
-      {/* The board — not in the numbers stage */}
-      {stage !== "numbers" && (
+      {/* The board: things or dots. In the numbers stage, only when help is needed. */}
+      {showBoard && (
         <div className="mb-5">
           <TenFrameBoard
             key={`${current.serial}-${stage}`}
             question={q}
             look={stage === "objects" ? "objects" : "dots"}
-            interactive={stage === "objects" && !solved}
-            demo={false}
-            say={() => {}}
+            interactive={stage === "objects" && (phase === "asking" || phase === "hinted")}
+            demo={showing}
+            onDemoDone={onDemoDone}
+            say={say}
           />
         </div>
       )}
 
       {/* Answers */}
       <div className="flex flex-col items-center gap-4">
-        {stage === "numbers" ? (
-          <NumberPad key={current.serial} reveal={null} locked={solved} onSubmit={answer} />
-        ) : (
-          <AnswerChoices choices={q.choices} tried={tried} reveal={solved ? q.answer : null} locked={solved} onPick={answer} />
-        )}
-
-        <div className="min-h-8 text-center text-lg font-bold" aria-live="polite">
-          {solved ? (
+        <div className="min-h-8 text-center text-lg sm:text-xl font-bold max-w-md" aria-live="polite">
+          {phase === "solved" ? (
             <span className="text-emerald-300">
               {message} <span className="ml-1">{"⭐".repeat(earned)}</span>
             </span>
+          ) : phase === "hinted" ? (
+            <span className="text-amber-200">💡 {message}</span>
+          ) : phase === "showing" ? (
+            <span className="text-sky-200">👀 {message}</span>
+          ) : phase === "revealed" ? (
+            <span className="text-emerald-200">👉 {message}</span>
           ) : (
-            message && <span className="text-amber-200">{message}</span>
+            message && <span className="text-sky-200">{message}</span>
           )}
         </div>
+
+        {stage === "numbers" ? (
+          <NumberPad
+            key={current.serial}
+            reveal={phase === "revealed" ? q.answer : null}
+            locked={phase === "solved" || showing}
+            onSubmit={answer}
+          />
+        ) : (
+          <AnswerChoices
+            choices={q.choices}
+            tried={tried}
+            reveal={phase === "revealed" || phase === "solved" ? q.answer : null}
+            locked={phase === "solved" || showing}
+            onPick={answer}
+          />
+        )}
       </div>
 
       {/* "Now try it with dots!" */}
