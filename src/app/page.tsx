@@ -8,10 +8,11 @@ import AdventureMap from "@/components/AdventureMap";
 import BattleArena from "@/components/BattleArena";
 import GardenPanel from "@/components/GardenPanel";
 import PlaceQuest from "@/components/game/PlaceQuest";
-import { PLACES, Place, TRAILS, Trail, isOpen, lockedReason, placesOn } from "@/lib/game/places";
+import { PLACES, Place, TRAILS, Trail, isOpen, lockedReason, placesOn, trailsIn } from "@/lib/game/places";
 import type { Operation } from "@/lib/game/operation";
 import { ADDITION } from "@/lib/addition";
 import { SUBTRACTION } from "@/lib/subtraction";
+import { MULTIPLICATION } from "@/lib/multiplication";
 import { progressOf, updateGame, useSavedGame } from "@/lib/savedGame";
 import { playToggleSound, playBackgroundMusic, stopBackgroundMusic, BackgroundMusicNodes } from "@/utils/audio";
 
@@ -19,7 +20,12 @@ import { playToggleSound, playBackgroundMusic, stopBackgroundMusic, BackgroundMu
 const OPERATIONS: Record<Trail, Operation> = {
   adding: ADDITION,
   subtracting: SUBTRACTION,
+  multiplying: MULTIPLICATION,
 };
+
+// A tab on the map: one of the trails, or the Guardian realm's old division
+// questions, which stay until division is rebuilt.
+type MapTrail = Trail | "dividing";
 
 export default function Dashboard() {
   // 1. Core State
@@ -59,13 +65,15 @@ export default function Dashboard() {
     };
   }, [musicPlaying]);
 
-  // 4. The Junior realm has two trails — adding and taking away — with a
-  // switch between them on the map. Which places are open is decided in
-  // lib/game/places.ts.
-  const [trail, setTrail] = useState<Trail>("adding");
+  // 4. Each realm has trails, with a switch between them on the map: adding
+  // and taking away in the Junior realm; multiplying (and the old division
+  // questions) in the Guardian realm. Each realm remembers which trail was
+  // showing. Which places are open is decided in lib/game/places.ts.
+  const [trailOf, setTrailOf] = useState<Record<Realm, MapTrail>>({ junior: "adding", guardian: "multiplying" });
+  const trail = trailOf[realm];
   const [activePlace, setActivePlace] = useState<Place | null>(null);
   const isMastered = (id: string) => progressOf(game, id).mastered;
-  const juniorNodes: MathNode[] = placesOn(trail).map((place) => ({
+  const placeNodes: MathNode[] = (trail === "dividing" ? [] : placesOn(trail)).map((place) => ({
     id: place.id,
     title: place.title,
     mathType: OPERATIONS[place.trail].id,
@@ -79,11 +87,14 @@ export default function Dashboard() {
     y: place.y,
   }));
 
-  // The Guardian realm (multiplication and division) is unchanged for now.
+  // The Guardian realm's old division questions, unchanged until division is rebuilt.
   const [guardianNodes, setGuardianNodes] = useState<MathNode[]>(initialGuardianNodes);
 
-  // Current active nodes list based on selected realm
-  const activeNodes = realm === "junior" ? juniorNodes : guardianNodes;
+  const activeNodes = trail === "dividing" ? guardianNodes : placeNodes;
+  const mapTabs = [
+    ...trailsIn(realm).map((t): { id: MapTrail; label: string } => ({ id: t, label: `${TRAILS[t].sign} ${TRAILS[t].name}` })),
+    ...(realm === "guardian" ? [{ id: "dividing" as MapTrail, label: "➗ Crystal Caves" }] : []),
+  ];
 
   // 6. Handle Solve Quest
   const handleAnswerSelect = (option: string, currentQuestionIndex: number, advanceQuestion: () => void) => {
@@ -152,11 +163,11 @@ export default function Dashboard() {
 
   // 7. Node and Quest handlers
   const handleNodeClick = (node: MathNode) => {
-    if (realm === "junior") {
-      const place = PLACES.find((p) => p.id === node.id);
-      if (place && node.unlocked) {
+    const place = PLACES.find((p) => p.id === node.id);
+    if (place) {
+      if (node.unlocked) {
         setActivePlace(place);
-        setCurrentView("addition");
+        setCurrentView("place");
       }
       return;
     }
@@ -226,17 +237,14 @@ export default function Dashboard() {
           <>
             {/* Left Side Viewport: Adventure Map (75% on desktop / Col span 3) */}
             <AdventureMap
-              title={realm === "junior" ? `Junior Realm: ${TRAILS[trail].name}` : "Guardian Peaks"}
-              tabs={
-                realm === "junior"
-                  ? (Object.keys(TRAILS) as Trail[]).map((t) => ({
-                      id: t,
-                      label: `${TRAILS[t].sign} ${TRAILS[t].name}`,
-                      active: t === trail,
-                      onSelect: () => setTrail(t),
-                    }))
-                  : undefined
-              }
+              title={`${realm === "junior" ? "Junior Realm" : "Guardian Peaks"}: ${
+                trail === "dividing" ? "Crystal Caves" : TRAILS[trail].name
+              }`}
+              tabs={mapTabs.map((tab) => ({
+                ...tab,
+                active: tab.id === trail,
+                onSelect: () => setTrailOf((all) => ({ ...all, [realm]: tab.id })),
+              }))}
               activeNodes={activeNodes}
               onNodeClick={handleNodeClick}
               audioGuide={audioGuide}
@@ -245,9 +253,9 @@ export default function Dashboard() {
             {/* Right Side Panel: the garden the child has grown (25% on desktop).
                 The backpack (components/Backpack.tsx) is put away for now — its
                 items didn't do anything yet. */}
-            <GardenPanel game={game} />
+            <GardenPanel game={game} realm={realm} />
           </>
-        ) : currentView === "addition" && activePlace ? (
+        ) : currentView === "place" && activePlace ? (
           <PlaceQuest
             key={activePlace.id}
             place={activePlace}

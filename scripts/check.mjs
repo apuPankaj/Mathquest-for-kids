@@ -568,10 +568,15 @@ function openWith(mastered) {
   return PLACES.filter((p) => isOpen(p, done)).map((p) => p.id).join(",");
 }
 const place = (id) => PLACES.find((p) => p.id === id);
-check(openWith([]) === "j1", `nothing mastered: only Pebble Meadows open (got ${openWith([])})`);
-check(openWith(["j1"]) === "j1,j2,s1", `Pebble Meadows mastered opens Whispering Vines and Firefly Falls (got ${openWith(["j1"])})`);
-check(openWith(["j1", "s1"]) === "j1,j2,s1", `Echo Hollow also needs Whispering Vines (got ${openWith(["j1", "s1"])})`);
-check(openWith(["j1", "j2", "s1"]) === "j1,j2,j3,s1,s2", `got ${openWith(["j1", "j2", "s1"])}`);
+// Windmill Canyons (m1) is open from the start too: Guardian players may
+// never have used the Junior map, so multiplication waits on nothing there.
+check(openWith([]) === "j1,m1", `nothing mastered: only Pebble Meadows and Windmill Canyons open (got ${openWith([])})`);
+check(openWith(["j1"]) === "j1,j2,s1,m1", `Pebble Meadows mastered opens Whispering Vines and Firefly Falls (got ${openWith(["j1"])})`);
+check(openWith(["j1", "s1"]) === "j1,j2,s1,m1", `Echo Hollow also needs Whispering Vines (got ${openWith(["j1", "s1"])})`);
+check(openWith(["j1", "j2", "s1"]) === "j1,j2,j3,s1,s2,m1", `got ${openWith(["j1", "j2", "s1"])}`);
+check(openWith(["m1"]) === "j1,m1,m2", `Windmill Canyons mastered opens Skip-Stone Stream (got ${openWith(["m1"])})`);
+check(openWith(["m1", "m2", "m3"]) === "j1,m1,m2,m3,m4", `the mountain opens in order (got ${openWith(["m1", "m2", "m3"])})`);
+check(lockedReason(place("m2"), () => false) === "Locked 🔒", "multiplication has no partner trail");
 check(!openWith(["j1", "j2", "j3", "s1", "s2", "s3"]).includes("s4"), "Sunstone Bridge waits for Numeria Gate");
 check(openWith(["j1", "j2", "j3", "j4", "s1", "s2", "s3"]).includes("s4"), "Sunstone Bridge opens with Numeria Gate and Grove of Ten");
 check(lockedReason(place("s1"), () => false) === "After Pebble Meadows", `locked reason: "${lockedReason(place("s1"), () => false)}"`);
