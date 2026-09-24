@@ -16,6 +16,7 @@ import {
 import { applyOutcome, freshProgress } from "../src/lib/game/mastery.ts";
 import { initialBoard, demoStep, tapItem, tapEmpty, labelFor, bigGroup } from "../src/lib/addition/board.ts";
 import * as sub from "../src/lib/subtraction/questions.ts";
+import * as subBoard from "../src/lib/subtraction/board.ts";
 
 let failures = 0;
 let checks = 0;
@@ -309,6 +310,80 @@ for (const level of [1, 2, 3, 4]) {
   }
 }
 console.log(`counting board: ${boards} demonstrations and child play-throughs run to the end`);
+
+// ---------------------------------------------------------------------------
+// The subtraction board, for EVERY allowed question in both looks.
+// ---------------------------------------------------------------------------
+
+let subBoards = 0;
+for (const level of [1, 2, 3, 4]) {
+  for (const [a, b] of sub.pairsFor(level)) {
+    const q = sq(level, a, b);
+    const ones = a - 10;
+    const present = (bd) => bd.items.filter((it) => !bd.taken.includes(it.id)).length;
+    const labels = (bd) => bd.items.map((it) => subBoard.labelFor(bd, q, it)).filter((n) => n !== null);
+
+    for (const look of ["objects", "dots"]) {
+      const where = `subtraction board level ${level} ${a}-${b} (${look})`;
+      subBoards++;
+      let board = subBoard.initialBoard(q, look);
+
+      if (look === "dots") {
+        // Pictures arrive already crossed out, with no running count to read the answer from.
+        check(board.taken.length === b && present(board) === q.answer, `${where}: pictures should show ${b} crossed out`);
+        check(level === 3 || labels(board).length === 0, `${where}: pictures show a number that gives the answer away`);
+      } else if (level === 2 || level === 4) {
+        check(labels(board).length === 1 && labels(board)[0] === a, `${where}: should start with "${a}" showing`);
+      }
+
+      // 1. "Show me", from whatever the board starts as.
+      let lastSay = "";
+      let steps = 0;
+      const sayings = [];
+      for (let s = subBoard.demoStep(board, q); s; s = subBoard.demoStep(board, q)) {
+        board = s.board;
+        if (s.say) { lastSay = s.say; sayings.push(s.say); }
+        if (++steps > 80) break;
+      }
+      check(steps <= 80 && board.finished, `${where}: demonstration never finished`);
+      check(sayings[0] === `Start with ${a}.`, `${where}: demonstration should start "Start with ${a}." (got "${sayings[0]}")`);
+      check(new RegExp(`\\b${q.answer}\\b`).test(lastSay), `${where}: demonstration ended saying "${lastSay}"`);
+      check(board.taken.length === b && present(board) === q.answer, `${where}: demonstration left ${present(board)}, not ${q.answer}`);
+      if (level === 4) {
+        const firstOnes = board.taken.slice(0, ones);
+        check(firstOnes.every((id) => id.startsWith("o")), `${where}: the loose ones must go first`);
+        check(sayings.includes("10! Back to ten."), `${where}: demonstration never said "back to ten"`);
+        check(!sayings.includes(String(q.answer + 1)) || q.answer + 1 >= 10 || sayings.indexOf(String(q.answer + 1)) < sayings.indexOf(String(q.answer)),
+          `${where}: counting back out of order`);
+      }
+      if (level === 2) {
+        const counts = sayings.filter((t) => /^\d+$/.test(t)).map(Number);
+        check(counts.join() === Array.from({ length: b }, (_, i) => a - 1 - i).join(), `${where}: counted back ${counts}, expected ${a - 1} down to ${q.answer}`);
+      }
+
+      // 2. A child tapping (objects only — pictures are look-and-think).
+      if (look !== "objects") continue;
+      board = subBoard.initialBoard(q, look);
+      lastSay = "";
+      for (let guard = 0; guard < 60; guard++) {
+        const target = board.items.find((it) => !board.taken.includes(it.id) && !board.counted.includes(it.id));
+        const s = target ? subBoard.tapItem(board, q, target.id) : null;
+        if (!s || s.board === board) break;
+        board = s.board;
+        if (s.say) lastSay = s.say;
+      }
+      check(board.taken.length === b, `${where}: child took away ${board.taken.length}, not ${b}`);
+      if (level === 3) check(lastSay === `${b} taken away.`, `${where}: child ended on "${lastSay}"`);
+      else check(lastSay === String(q.answer), `${where}: child ended on "${lastSay}", not "${q.answer}"`);
+      if (level !== 3) check(Math.max(...labels(board)) === q.answer, `${where}: labels end at ${Math.max(...labels(board))}`);
+      else check(Math.max(...labels(board)) === b, `${where}: level 3 labels the ${b} taken away`);
+      // Tapping more than b never takes extra away.
+      const extra = board.items.find((it) => !board.taken.includes(it.id));
+      if (extra) check((subBoard.tapItem(board, q, extra.id)?.board.taken.length ?? b) === b, `${where}: took away more than ${b}`);
+    }
+  }
+}
+console.log(`subtraction board: ${subBoards} demonstrations and child play-throughs run to the end`);
 
 // ---------------------------------------------------------------------------
 

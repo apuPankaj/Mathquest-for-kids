@@ -51,8 +51,10 @@ export interface Step {
   pause?: number; // how long a demonstration waits after this step (ms)
 }
 
-export function makeItems(group: Group, count: number, frame: number, firstSlot = 0): Item[] {
-  return Array.from({ length: count }, (_, i) => ({ id: `${group}${i}`, group, frame, slot: firstSlot + i }));
+// `prefix` keeps ids unique when one group fills two frames (subtraction's
+// full ten plus loose ones).
+export function makeItems(group: Group, count: number, frame: number, firstSlot = 0, prefix: string = group): Item[] {
+  return Array.from({ length: count }, (_, i) => ({ id: `${prefix}${i}`, group, frame, slot: firstSlot + i }));
 }
 
 // Things still on the board (not taken away) in one frame.
