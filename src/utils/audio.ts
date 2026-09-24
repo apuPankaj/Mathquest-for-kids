@@ -5,7 +5,10 @@ let audioCtx: AudioContext | null = null;
 function getAudioContext(): AudioContext | null {
   if (typeof window === "undefined") return null;
   if (!audioCtx) {
-    audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    // Older Safari only has the prefixed name.
+    const Ctx = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return null;
+    audioCtx = new Ctx();
   }
   return audioCtx;
 }
@@ -44,6 +47,11 @@ export function playSuccessSound() {
   setTimeout(() => {
     playBeep(1320, "sine", 0.25, 0.15);
   }, 80);
+}
+
+export function playLockedSound() {
+  // Low, short buzz: "that place isn't open yet"
+  playBeep(100, "sawtooth", 0.15, 0.05);
 }
 
 export function playToggleSound() {
