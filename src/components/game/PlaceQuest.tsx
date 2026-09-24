@@ -197,6 +197,15 @@ export default function PlaceQuest({ place, operation, progress, onProgress, onS
   const showing = phase === "showing";
   // In the numbers stage the dots appear only once the child needs help.
   const showBoard = stage !== "numbers" || tried.length > 0;
+  // The sum must stay on one line. At full size "7 + 3 = 10" is about 4.1
+  // times as wide as the font is tall, and each extra character adds ~0.45 —
+  // too wide for a 360px phone, where 228px is left beside the 🔊 button
+  // (132px goes on the page and card padding, the border and the button). So
+  // the size comes from the screen width, capped at the usual 60px. Measured
+  // on the solved sum, so it doesn't change size when the answer goes in.
+  const sumLength = operation.equation(q, true).reduce((n, part) => n + part.text.length, 0);
+  const sumWidthInEms = 4.1 + 0.45 * Math.max(0, sumLength - 6);
+  const sumSize = `min(3.75rem, calc((100vw - 132px) / ${sumWidthInEms}))`;
 
   return (
     <div className="w-full lg:col-span-4 rounded-3xl border-4 border-amber-500/30 bg-[#064e3b] shadow-2xl p-4 sm:p-6 relative min-h-[560px] text-amber-50 overflow-hidden">
@@ -237,7 +246,11 @@ export default function PlaceQuest({ place, operation, progress, onProgress, onS
 
       {/* The sum, coloured to match the board, and a button to hear it again */}
       <div className="flex items-center justify-center gap-3 mb-4">
-        <div data-part="equation" className="text-center text-6xl sm:text-7xl font-black font-fredoka drop-shadow-[0_4px_6px_rgba(0,0,0,0.5)] select-none">
+        <div
+          data-part="equation"
+          style={{ "--sum-size": sumSize } as React.CSSProperties}
+          className="text-center text-(length:--sum-size) leading-none sm:text-7xl whitespace-nowrap font-black font-fredoka drop-shadow-[0_4px_6px_rgba(0,0,0,0.5)] select-none"
+        >
           {operation.equation(q, phase === "solved").map((part, i) => (
             <React.Fragment key={i}>
               {i > 0 && " "}
