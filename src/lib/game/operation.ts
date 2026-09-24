@@ -9,7 +9,7 @@ import type { EquationPart, Level, Question, Rng, Stage } from "./core.ts";
 import type { BoardKit } from "./board.ts";
 
 export interface Operation<Q extends Question = Question> {
-  id: "addition" | "subtraction";
+  id: "addition" | "subtraction" | "multiplication";
   // What a level teaches, in a few words ("Add up to 5").
   skill(level: Level): string;
   makeQuestion(level: Level, rng?: Rng, avoid?: string[]): Q;
@@ -23,5 +23,7 @@ export interface Operation<Q extends Question = Question> {
   correctText(q: Q, rng?: Rng): string;
   // The sum on screen, piece by piece.
   equation(q: Q, solved: boolean): EquationPart[];
+  // An optional small line under the sum, e.g. "4 + 4 + 4" under 3 × 4.
+  subline?(q: Q, solved: boolean): string | null;
   board: BoardKit<Q>;
 }

@@ -51,41 +51,11 @@ export const initialInventory: InventoryItem[] = [
   },
 ];
 
+// The Guardian realm's old division questions, kept until division is rebuilt
+// the way addition, subtraction and multiplication were. (Its old
+// multiplication questions, which drew 3 × 4 as 3 gears next to 4 gears, are
+// gone — Windmill Peaks replaces them.)
 export const initialGuardianNodes: MathNode[] = [
-  {
-    id: "g1",
-    title: "Windmill Canyons",
-    mathType: "multiplication",
-    questions: [
-      {
-        problem: "3 x 4",
-        options: ["9", "12", "15", "16"],
-        answer: "12",
-        visuals: {
-          type: "block",
-          items1: ["⚙️", "⚙️", "⚙️"],
-          items2: ["⚙️", "⚙️", "⚙️", "⚙️"],
-          operator: "x",
-        },
-      },
-      {
-        problem: "2 x 5",
-        options: ["8", "10", "12", "15"],
-        answer: "10",
-        visuals: {
-          type: "block",
-          items1: ["⚙️", "⚙️"],
-          items2: ["⚙️", "⚙️", "⚙️", "⚙️", "⚙️"],
-          operator: "x",
-        },
-      },
-    ],
-    reward: 25,
-    unlocked: true,
-    completed: false,
-    x: 18,
-    y: 70,
-  },
   {
     id: "g2",
     title: "Crystal Cavern",
@@ -115,44 +85,10 @@ export const initialGuardianNodes: MathNode[] = [
       },
     ],
     reward: 30,
-    unlocked: false,
+    unlocked: true,
     completed: false,
-    x: 45,
-    y: 45,
-  },
-  {
-    id: "g3",
-    title: "Ancient Generator",
-    mathType: "multiplication",
-    questions: [
-      {
-        problem: "6 x 3",
-        options: ["12", "18", "21", "24"],
-        answer: "18",
-        visuals: {
-          type: "block",
-          items1: ["⚡", "⚡", "⚡", "⚡", "⚡", "⚡"],
-          items2: ["🔋", "🔋", "🔋"],
-          operator: "x",
-        },
-      },
-      {
-        problem: "4 x 4",
-        options: ["12", "14", "16", "18"],
-        answer: "16",
-        visuals: {
-          type: "block",
-          items1: ["⚡", "⚡", "⚡", "⚡"],
-          items2: ["🔋", "🔋", "🔋", "🔋"],
-          operator: "x",
-        },
-      },
-    ],
-    reward: 35,
-    unlocked: false,
-    completed: false,
-    x: 68,
-    y: 60,
+    x: 30,
+    y: 62,
   },
   {
     id: "g4",
@@ -185,7 +121,7 @@ export const initialGuardianNodes: MathNode[] = [
     reward: 50,
     unlocked: false,
     completed: false,
-    x: 88,
-    y: 25,
+    x: 70,
+    y: 32,
   },
 ];

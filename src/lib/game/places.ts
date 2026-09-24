@@ -1,16 +1,28 @@
-// The places on the Junior map, trail by trail, in the order a child meets
-// them. Each place teaches one level of its operation. x and y are the
-// place's position on the wide (desktop) map, as percentages; on phones the
-// map lays them out itself (components/AdventureMap.tsx).
+// The places on the map, trail by trail, in the order a child meets them.
+// The Junior realm has the adding and taking-away trails; the Guardian realm
+// the multiplying trail (and, until division is rebuilt, the old division
+// questions, which live in data/mockData.ts rather than here).
+//
+// Each place teaches one level of its operation. x and y are the place's
+// position on the wide (desktop) map, as percentages; on phones the map lays
+// them out itself (components/AdventureMap.tsx).
 
 import type { Level } from "./core.ts";
 
-export type Trail = "adding" | "subtracting";
+export type Trail = "adding" | "subtracting" | "multiplying";
+export type RealmName = "junior" | "guardian";
 
-export const TRAILS: Record<Trail, { name: string; sign: string }> = {
-  adding: { name: "Adding Meadows", sign: "➕" },
-  subtracting: { name: "Taking-away River", sign: "➖" },
+// `partner`: the trail whose place at the same level must be mastered first
+// (taking away waits for adding; dividing will wait for multiplying).
+export const TRAILS: Record<Trail, { name: string; sign: string; realm: RealmName; partner?: Trail }> = {
+  adding: { name: "Adding Meadows", sign: "➕", realm: "junior" },
+  subtracting: { name: "Taking-away River", sign: "➖", realm: "junior", partner: "adding" },
+  multiplying: { name: "Windmill Peaks", sign: "✖️", realm: "guardian" },
 };
+
+export function trailsIn(realm: RealmName): Trail[] {
+  return (Object.keys(TRAILS) as Trail[]).filter((t) => TRAILS[t].realm === realm);
+}
 
 export interface Place {
   id: string; // also the key progress is saved under — never rename one
@@ -31,21 +43,27 @@ export const PLACES: Place[] = [
   { id: "s2", title: "Echo Hollow", trail: "subtracting", level: 2, x: 38, y: 42 },
   { id: "s3", title: "Grove of Ten", trail: "subtracting", level: 3, x: 62, y: 58 },
   { id: "s4", title: "Sunstone Bridge", trail: "subtracting", level: 4, x: 85, y: 75 },
+  // Up the mountain.
+  { id: "m1", title: "Windmill Canyons", trail: "multiplying", level: 1, x: 15, y: 72 },
+  { id: "m2", title: "Skip-Stone Stream", trail: "multiplying", level: 2, x: 38, y: 42 },
+  { id: "m3", title: "Ancient Generator", trail: "multiplying", level: 3, x: 62, y: 62 },
+  { id: "m4", title: "Sky Orchard", trail: "multiplying", level: 4, x: 85, y: 28 },
 ];
 
 export function placesOn(trail: Trail): Place[] {
   return PLACES.filter((p) => p.trail === trail);
 }
 
-// The addition place a subtraction place builds on: the one at the same level.
+// The place a place builds on: the same level on its trail's partner trail.
 export function partnerOf(place: Place): Place | null {
-  if (place.trail !== "subtracting") return null;
-  return placesOn("adding").find((p) => p.level === place.level) ?? null;
+  const partner = TRAILS[place.trail].partner;
+  if (!partner) return null;
+  return placesOn(partner).find((p) => p.level === place.level) ?? null;
 }
 
 // When a place opens:
 //   - the first place on a trail, or once the place before it is mastered;
-//   - AND, on the subtraction trail, once its addition partner is mastered —
+//   - AND, on a trail with a partner, once the partner place is mastered —
 //     "10 take away 3" waits until "7 and 3 make 10" is known.
 export function isOpen(place: Place, isMastered: (id: string) => boolean): boolean {
   const trail = placesOn(place.trail);

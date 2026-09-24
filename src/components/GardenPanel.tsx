@@ -1,20 +1,27 @@
 import React, { useState } from "react";
-import { PLACES, TRAILS, Trail, isOpen, placesOn } from "@/lib/game/places";
+import { RealmName, TRAILS, Trail, isOpen, placesOn, trailsIn } from "@/lib/game/places";
 import { ADDITION } from "@/lib/addition";
 import { SUBTRACTION } from "@/lib/subtraction";
+import { MULTIPLICATION } from "@/lib/multiplication";
 import { SavedGame, progressOf, startAgain } from "@/lib/savedGame";
 
 // The side panel beside the map: what the child has grown so far, and the
-// grown-ups' "Start again" button. (It replaces the backpack, whose items
-// didn't do anything yet.)
+// grown-ups' "Start again" button, for the realm on screen. (It replaces the
+// backpack, whose items didn't do anything yet.)
 
 const STAGE_ICON = { objects: "🥭", pictures: "🟢", numbers: "🔢" } as const;
-const SKILL: Record<Trail, (level: 1 | 2 | 3 | 4) => string> = { adding: ADDITION.skill, subtracting: SUBTRACTION.skill };
+const SKILL: Record<Trail, (level: 1 | 2 | 3 | 4) => string> = {
+  adding: ADDITION.skill,
+  subtracting: SUBTRACTION.skill,
+  multiplying: MULTIPLICATION.skill,
+};
 
-export default function GardenPanel({ game }: { game: SavedGame }) {
+export default function GardenPanel({ game, realm }: { game: SavedGame; realm: RealmName }) {
   const [confirming, setConfirming] = useState(false);
   const isMastered = (id: string) => progressOf(game, id).mastered;
-  const grown = PLACES.filter((p) => isMastered(p.id)).length;
+  const trails = trailsIn(realm);
+  const places = trails.flatMap((t) => placesOn(t));
+  const grown = places.filter((p) => isMastered(p.id)).length;
 
   return (
     <section className="bg-gradient-to-b from-[#f5ebd6] to-[#e6d9bd] rounded-3xl border-6 border-[#8b5a2b] shadow-xl p-5 flex flex-col">
@@ -22,11 +29,11 @@ export default function GardenPanel({ game }: { game: SavedGame }) {
         <span className="text-3xl">{"🌳".repeat(grown) || "🌱"}</span>
         <h2 className="text-xl font-bold text-[#5c3a21] mt-1">Your Garden</h2>
         <p className="text-xs text-amber-800 font-semibold">
-          {grown === 0 ? "Master a place to grow a tree!" : `${grown} of ${PLACES.length} trees grown`}
+          {grown === 0 ? "Master a place to grow a tree!" : `${grown} of ${places.length} trees grown`}
         </p>
       </div>
 
-      {(Object.keys(TRAILS) as Trail[]).map((trail) => (
+      {trails.map((trail) => (
         <div key={trail} className="mb-3">
           <h3 className="text-xs font-extrabold text-[#8b5a2b] uppercase tracking-wider mb-1.5">
             {TRAILS[trail].sign} {TRAILS[trail].name}

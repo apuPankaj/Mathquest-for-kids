@@ -18,6 +18,8 @@ import { initialBoard, demoStep, tapItem, tapEmpty, labelFor, bigGroup } from ".
 import * as sub from "../src/lib/subtraction/questions.ts";
 import * as subBoard from "../src/lib/subtraction/board.ts";
 import { PLACES, isOpen, lockedReason } from "../src/lib/game/places.ts";
+import * as mul from "../src/lib/multiplication/questions.ts";
+import * as mulBoard from "../src/lib/multiplication/board.ts";
 
 let failures = 0;
 let checks = 0;
@@ -313,6 +315,75 @@ for (const level of [1, 2, 3, 4]) {
 console.log(`counting board: ${boards} demonstrations and child play-throughs run to the end`);
 
 // ---------------------------------------------------------------------------
+// Multiplication questions
+// ---------------------------------------------------------------------------
+
+const mulAllowed = (level, a, b) => mul.pairsFor(level).some(([x, y]) => x === a && y === b);
+for (const [label, rng] of [["seeded", seeded(2028)], ["random", Math.random]]) {
+  for (const level of [1, 2, 3, 4]) {
+    const seen = new Set();
+    const recent = [];
+    let named = 0;
+    let distractors = 0;
+    for (let i = 0; i < N; i++) {
+      const q = mul.makeQuestion(level, rng, recent.slice(-3));
+      const where = `multiplication level ${level} ${q.a}x${q.b}`;
+      seen.add(q.key);
+
+      check(mulAllowed(level, q.a, q.b), `${where}: not an allowed pair`);
+      check(q.answer === q.a * q.b, `${where}: answer ${q.answer}, expected ${q.a * q.b}`);
+      if (level === 1) check(q.a >= 2 && q.a <= 5 && q.b >= 2 && q.b <= 5, `${where}: level 1 outside 2-5 groups of 2-5`);
+      if (level === 2) check([2, 5, 10].includes(q.b) && q.a <= 6, `${where}: level 2 must be groups of 2, 5 or 10`);
+      if (level === 3) check([3, 4].includes(q.a) || [3, 4].includes(q.b), `${where}: level 3 must use the 3s or 4s`);
+      if (level === 4) check(q.a >= 6 && q.a <= 9 && q.b >= 2 && q.b <= 9, `${where}: level 4 must be 6-9 rows`);
+
+      check(q.choices.length === 3, `${where}: ${q.choices.length} choices`);
+      check(new Set(q.choices).size === 3, `${where}: repeated choice ${q.choices}`);
+      check(q.choices.includes(q.answer), `${where}: answer missing from ${q.choices}`);
+      check(q.choices.every((c) => Number.isInteger(c) && c >= 1), `${where}: bad choice in ${q.choices}`);
+      check(q.choices.every((c, j) => j === 0 || q.choices[j - 1] < c), `${where}: choices not in order`);
+
+      for (const c of q.choices.filter((c) => c !== q.answer)) {
+        distractors++;
+        if (mul.diagnose(q, c) !== "other") named++;
+        const hint = mul.hintFor(q, c);
+        check(hint.length > 0, `${where}: no hint for ${c}`);
+        check(!new RegExp(`\\b${q.answer}\\b`).test(hint), `${where}: hint for ${c} gives away the answer: "${hint}"`);
+        check(!/\b1 more rows\b/.test(hint), `${where}: "1 more rows" in "${hint}"`);
+      }
+
+      check(!recent.slice(-3).includes(q.key), `${where}: repeated within 3 questions`);
+      recent.push(q.key);
+
+      const t = mul.twinOf(q, rng);
+      check(t.level === q.level && !(t.a === q.a && t.b === q.b) && mulAllowed(level, t.a, t.b), `${where}: bad twin ${t.a}x${t.b}`);
+      check(t.thing === q.thing, `${where}: twin counts different things`);
+
+      const praise = mul.correctText(q, rng);
+      check(praise.includes(`${q.a} ${mul.unitOf(level)} of ${q.b} make ${q.answer}.`), `${where}: correct text "${praise}"`);
+      if (level === 3 && q.a !== q.b) check(praise.includes(`${q.b} rows of ${q.a} make ${q.answer} too`), `${where}: level 3 should give the turned-around fact`);
+      const line = mul.subline(q, false);
+      if (level === 1) {
+        check(line === Array(q.a).fill(q.b).join(" + "), `${where}: subline "${line}"`);
+        check(mul.subline(q, true) === `${line} = ${q.answer}`, `${where}: solved subline`);
+      } else check(line === null, `${where}: only level 1 has a subline`);
+      for (const stage of ["objects", "pictures", "numbers"]) {
+        check(!new RegExp(`\\b${q.answer}\\b`).test(mul.questionText(q, stage)), `${where}: question gives the answer away`);
+      }
+    }
+    const all = mul.pairsFor(level).length;
+    check(seen.size === all, `multiplication level ${level} (${label}): only ${seen.size} of ${all} questions came up`);
+    console.log(`multiplication level ${level} (${label}): ${N} questions, all ${seen.size}/${all} possible questions used, ` +
+      `${Math.round((100 * named) / distractors)}% of wrong choices are a named mistake`);
+  }
+}
+const mq = (level, a, b) => { let q; const rng = seeded(a * 37 + b); do q = mul.makeQuestion(level, rng); while (q.a !== a || q.b !== b); return q; };
+check(mul.diagnose(mq(1, 3, 4), 7) === "added", "3 × 4 → 7 is adding instead");
+check(mul.diagnose(mq(1, 3, 4), 16) === "groupOff" && mul.diagnose(mq(1, 3, 4), 8) === "groupOff", "3 × 4 → 16 or 8 is one group off");
+check(mul.diagnose(mq(3, 3, 4), 15) === "columnOff", "3 × 4 → 15 (in rows) is the wrong number in each row");
+check(mul.hintFor(mq(4, 7, 6), 48) === "Close! Break it apart: 5 rows of 6, and 2 more rows.", `7 × 6 → 48 hint: "${mul.hintFor(mq(4, 7, 6), 48)}"`);
+
+// ---------------------------------------------------------------------------
 // The subtraction board, for EVERY allowed question in both looks.
 // ---------------------------------------------------------------------------
 
@@ -387,6 +458,108 @@ for (const level of [1, 2, 3, 4]) {
 console.log(`subtraction board: ${subBoards} demonstrations and child play-throughs run to the end`);
 
 // ---------------------------------------------------------------------------
+// The multiplication board, for EVERY allowed question in both looks.
+// ---------------------------------------------------------------------------
+
+let mulBoards = 0;
+const shuffled = (xs, rng) => xs.map((x) => [rng(), x]).sort((p, q) => p[0] - q[0]).map((p) => p[1]);
+for (const level of [1, 2, 3, 4]) {
+  for (const [a, b] of mul.pairsFor(level)) {
+    const q = mq(level, a, b);
+    const rng = seeded(a * 101 + b);
+    const labels = (bd) => bd.items.map((it) => mulBoard.labelFor(bd, q, it)).filter((n) => n !== null);
+
+    for (const look of ["objects", "dots"]) {
+      const where = `multiplication board level ${level} ${a}x${b} (${look})`;
+      mulBoards++;
+      let board = mulBoard.initialBoard(q, look);
+      if (look === "dots") {
+        check(board.items.length === a * b, `${where}: pictures should show all ${a * b}`);
+        check(labels(board).length === 0, `${where}: pictures show a number before anything is counted`);
+        if (level === 4) check(board.splitAfter === 5, `${where}: pictures should arrive broken apart`);
+      }
+
+      // 1. "Show me".
+      const sayings = [];
+      let steps = 0;
+      for (let s = mulBoard.demoStep(board, q); s; s = mulBoard.demoStep(board, q)) {
+        board = s.board;
+        if (s.say) sayings.push(s.say);
+        if (++steps > 40) break;
+      }
+      check(steps <= 40 && board.finished, `${where}: demonstration never finished`);
+      check(new RegExp(`\\b${q.answer}\\b`).test(sayings.at(-1) ?? ""), `${where}: demonstration ended "${sayings.at(-1)}"`);
+      check(board.items.length === a * b, `${where}: demonstration ended with ${board.items.length} things, not ${a * b}`);
+      if (level <= 2) check(Math.max(...labels(board)) === q.answer, `${where}: labels end at ${Math.max(...labels(board))}`);
+      if (level === 2) check(sayings.slice(0, a).join() === Array.from({ length: a }, (_, i) => String((i + 1) * b)).join(), `${where}: skip counted ${sayings.slice(0, a)}`);
+      if (level === 3 && a !== b) check(board.frames === b && board.cells === a, `${where}: demonstration should end turned around`);
+      if (level === 4) {
+        check(labels(board).sort((x, y) => x - y).join() === [5 * b, (a - 5) * b].sort((x, y) => x - y).join(), `${where}: parts ${labels(board)}`);
+        check(board.items.every((it) => it.group === (it.frame >= 5 ? "b" : "a")), `${where}: rows below the break should be gold`);
+      }
+
+      // 2. A child tapping, in a random order (objects only).
+      if (look !== "objects") continue;
+      board = mulBoard.initialBoard(q, look);
+      let last = "";
+      if (level === 1) {
+        check(board.items.length === 0, `${where}: plates should start empty`);
+        for (const f of shuffled([...Array(a).keys()], rng)) {
+          const s = mulBoard.tapEmpty(board, q, f);
+          if (!s) { check(false, `${where}: plate ${f} would not fill`); break; }
+          board = s.board; last = s.say;
+          check(board.items.filter((it) => it.frame === f).length === b, `${where}: plate ${f} got the wrong number`);
+        }
+        check(last === (a > 1 ? `${q.answer - b} and ${b} is ${q.answer}.` : String(q.answer)), `${where}: filling ended "${last}"`);
+        check(mulBoard.tapEmpty(board, q, 0) === null, `${where}: a full plate filled again`);
+      } else if (level <= 3) {
+        for (const f of shuffled([...Array(a).keys()], rng)) {
+          const item = board.items.find((it) => it.frame === f);
+          const s = mulBoard.tapItem(board, q, item.id);
+          board = s.board; last = s.say;
+        }
+        check(last === String(q.answer), `${where}: counting ended "${last}", not ${q.answer}`);
+        check(Math.max(...labels(board)) === q.answer, `${where}: labels end at ${Math.max(...labels(board))}`);
+      } else {
+        board = mulBoard.tapItem(board, q, board.items[0].id).board; // breaks it apart
+        check(board.splitAfter === 5, `${where}: first tap should break it apart`);
+        const bottomFirst = rng() < 0.5;
+        for (const part of bottomFirst ? ["bottom", "top"] : ["top", "bottom"]) {
+          const item = board.items.find((it) => (part === "top" ? it.frame < 5 : it.frame >= 5));
+          const s = mulBoard.tapItem(board, q, item.id);
+          board = s.board; last = s.say;
+        }
+        const [p1, p2] = [5 * b, (a - 5) * b];
+        check(last.endsWith(`Now add ${p1} and ${p2}.`), `${where}: parts ended "${last}"`);
+        check(!new RegExp(`\\b${q.answer}\\b`).test(last) || [p1, p2].includes(q.answer), `${where}: the child's own tapping gives the sum away: "${last}"`);
+      }
+
+      // 3. Turning around never adds or takes away (level 3), and twice is back where it started.
+      if (level === 3) {
+        const start = mulBoard.initialBoard(q, "objects");
+        const once = mulBoard.turnAround(start);
+        const twice = mulBoard.turnAround(once);
+        check(once.items.length === a * b && once.frames === b && once.cells === a, `${where}: turning changed the count or shape`);
+        check(once.items.every((it) => it.frame < b && it.slot < a), `${where}: a thing fell outside the turned grid`);
+        check(new Set(once.items.map((it) => `${it.frame},${it.slot}`)).size === a * b, `${where}: two things landed in one space`);
+        check(JSON.stringify(twice.items) === JSON.stringify(start.items), `${where}: turning twice isn't the start again`);
+        // Counting after turning gives the same answer.
+        let t = once;
+        let lastT = "";
+        for (let f = 0; f < b; f++) {
+          const row = t.items.find((it) => it.frame === f);
+          if (!row) { check(false, `${where}: turned row ${f} is empty`); break; }
+          const s = mulBoard.tapItem(t, q, row.id);
+          t = s.board; lastT = s.say;
+        }
+        check(lastT === String(q.answer), `${where}: counting the turned grid gave ${lastT}`);
+      }
+    }
+  }
+}
+console.log(`multiplication board: ${mulBoards} demonstrations and child play-throughs run to the end`);
+
+// ---------------------------------------------------------------------------
 // Which places are open
 // ---------------------------------------------------------------------------
 
@@ -395,10 +568,15 @@ function openWith(mastered) {
   return PLACES.filter((p) => isOpen(p, done)).map((p) => p.id).join(",");
 }
 const place = (id) => PLACES.find((p) => p.id === id);
-check(openWith([]) === "j1", `nothing mastered: only Pebble Meadows open (got ${openWith([])})`);
-check(openWith(["j1"]) === "j1,j2,s1", `Pebble Meadows mastered opens Whispering Vines and Firefly Falls (got ${openWith(["j1"])})`);
-check(openWith(["j1", "s1"]) === "j1,j2,s1", `Echo Hollow also needs Whispering Vines (got ${openWith(["j1", "s1"])})`);
-check(openWith(["j1", "j2", "s1"]) === "j1,j2,j3,s1,s2", `got ${openWith(["j1", "j2", "s1"])}`);
+// Windmill Canyons (m1) is open from the start too: Guardian players may
+// never have used the Junior map, so multiplication waits on nothing there.
+check(openWith([]) === "j1,m1", `nothing mastered: only Pebble Meadows and Windmill Canyons open (got ${openWith([])})`);
+check(openWith(["j1"]) === "j1,j2,s1,m1", `Pebble Meadows mastered opens Whispering Vines and Firefly Falls (got ${openWith(["j1"])})`);
+check(openWith(["j1", "s1"]) === "j1,j2,s1,m1", `Echo Hollow also needs Whispering Vines (got ${openWith(["j1", "s1"])})`);
+check(openWith(["j1", "j2", "s1"]) === "j1,j2,j3,s1,s2,m1", `got ${openWith(["j1", "j2", "s1"])}`);
+check(openWith(["m1"]) === "j1,m1,m2", `Windmill Canyons mastered opens Skip-Stone Stream (got ${openWith(["m1"])})`);
+check(openWith(["m1", "m2", "m3"]) === "j1,m1,m2,m3,m4", `the mountain opens in order (got ${openWith(["m1", "m2", "m3"])})`);
+check(lockedReason(place("m2"), () => false) === "Locked 🔒", "multiplication has no partner trail");
 check(!openWith(["j1", "j2", "j3", "s1", "s2", "s3"]).includes("s4"), "Sunstone Bridge waits for Numeria Gate");
 check(openWith(["j1", "j2", "j3", "j4", "s1", "s2", "s3"]).includes("s4"), "Sunstone Bridge opens with Numeria Gate and Grove of Ten");
 check(lockedReason(place("s1"), () => false) === "After Pebble Meadows", `locked reason: "${lockedReason(place("s1"), () => false)}"`);

@@ -15,7 +15,7 @@
 // Everything here is plain logic with no React, so `npm run check:addition`
 // can run every "Show me" demonstration to the end and confirm it lands on
 // the right answer. The board's shape is shared (lib/game/board.ts); the
-// screen is components/game/TenFrameBoard.tsx.
+// screen is components/game/CountingBoard.tsx.
 
 import { EMPTY_BOARD, isFull, makeItems } from "../game/board.ts";
 import type { Board, BoardKit, Item, Look, Step } from "../game/board.ts";
