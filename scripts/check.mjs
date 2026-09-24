@@ -12,7 +12,7 @@
 import {
   makeQuestion, twinOf, pairsFor, diagnose, hintFor, questionText, correctText, LEVELS,
 } from "../src/lib/addition/questions.ts";
-import { applyOutcome, freshProgress } from "../src/lib/addition/mastery.ts";
+import { applyOutcome, freshProgress } from "../src/lib/game/mastery.ts";
 import { initialBoard, demoStep, tapItem, tapEmpty, labelFor, bigGroup } from "../src/lib/addition/board.ts";
 
 let failures = 0;

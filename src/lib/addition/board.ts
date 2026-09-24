@@ -14,46 +14,16 @@
 //
 // Everything here is plain logic with no React, so `npm run check:addition`
 // can run every "Show me" demonstration to the end and confirm it lands on
-// the right answer. The screen is in components/addition/TenFrameBoard.tsx.
+// the right answer. The board's shape is shared (lib/game/board.ts); the
+// screen is components/game/TenFrameBoard.tsx.
 
-import type { AdditionQuestion } from "./questions";
-
-export type Look = "objects" | "dots";
-export type Group = "a" | "b" | "added";
-
-export interface Item {
-  id: string;
-  group: Group; // which number it came from — decides its colour
-  frame: number; // which ten-frame it sits in (0 or 1)
-  slot: number; // which space in that frame (0 to 9)
-}
-
-export interface Board {
-  cells: 5 | 10; // spaces per frame
-  frames: number; // how many frames are drawn
-  items: Item[];
-  joined: boolean; // levels 1-2: the two groups have been put together
-  pre: string[]; // level 2: things already counted before tapping ("start at 7")
-  startAt: number; // level 2: the number we start at (0 means count from 1)
-  counted: string[]; // things counted so far, in order
-  caption: string | null; // a short line shown above the frames
-  finished: boolean; // a demonstration has said its last line
-}
-
-// One change to the board, and what the voice says about it.
-export interface Step {
-  board: Board;
-  say?: string;
-  pause?: number; // how long a demonstration waits after this step (ms)
-}
+import { EMPTY_BOARD, isFull, makeItems } from "../game/board.ts";
+import type { Board, BoardKit, Item, Look, Step } from "../game/board.ts";
+import type { AdditionQuestion } from "./questions.ts";
 
 // Which group is bigger. Ties count as `a`.
 export function bigGroup(q: AdditionQuestion): "a" | "b" {
   return q.a >= q.b ? "a" : "b";
-}
-
-function makeItems(group: Group, count: number, frame: number, firstSlot = 0): Item[] {
-  return Array.from({ length: count }, (_, i) => ({ id: `${group}${i}`, group, frame, slot: firstSlot + i }));
 }
 
 // Both groups in one frame, the bigger one first so counting on reads left to right.
@@ -66,7 +36,7 @@ function joinedItems(q: AdditionQuestion): Item[] {
 }
 
 export function initialBoard(q: AdditionQuestion, look: Look): Board {
-  const base = { pre: [], startAt: 0, counted: [], caption: null, finished: false };
+  const base = { ...EMPTY_BOARD, plus: true };
 
   if (q.kind === "missing") {
     return { ...base, cells: 10, frames: 1, joined: true, items: makeItems("a", q.a, 0) };
@@ -132,10 +102,6 @@ function countItem(b: Board, id: string): Step {
 // ---------------------------------------------------------------------------
 // Level 3 — fill the ten
 // ---------------------------------------------------------------------------
-
-function isFull(b: Board, frame: number): boolean {
-  return b.items.filter((it) => it.frame === frame).length >= b.cells;
-}
 
 export function tapEmpty(b: Board, q: AdditionQuestion): Step | null {
   if (q.kind !== "missing" || isFull(b, 0)) return null;
@@ -232,3 +198,19 @@ export function demoStep(b: Board, q: AdditionQuestion): Step | null {
   const next = b.items.find((it) => !b.pre.includes(it.id) && !b.counted.includes(it.id));
   return next ? countItem(b, next.id) : finale(b, q);
 }
+
+// ---------------------------------------------------------------------------
+// The whole kit, as the shared screen uses it
+// ---------------------------------------------------------------------------
+
+export const additionBoard: BoardKit<AdditionQuestion> = {
+  initialBoard,
+  instruction,
+  action: (b, q) => (canJoin(b, q) ? "👐 Put them together" : null),
+  runAction: (b, q) => (canJoin(b, q) ? join(b, q) : null),
+  tapItem,
+  canFill: (b, q) => q.kind === "missing" && !isFull(b, 0),
+  tapEmpty,
+  labelFor,
+  demoStep,
+};

@@ -7,8 +7,9 @@ import Header from "@/components/Header";
 import AdventureMap from "@/components/AdventureMap";
 import BattleArena from "@/components/BattleArena";
 import GardenPanel from "@/components/GardenPanel";
-import AdditionQuest from "@/components/addition/AdditionQuest";
-import { ADDITION_PLACES, AdditionPlace } from "@/lib/addition/places";
+import PlaceQuest from "@/components/game/PlaceQuest";
+import { ADDITION_PLACES, AdditionPlace } from "@/lib/game/places";
+import { ADDITION } from "@/lib/addition";
 import { LEVELS } from "@/lib/addition/questions";
 import { progressOf, updateGame, useSavedGame } from "@/lib/savedGame";
 import { playToggleSound, playBackgroundMusic, stopBackgroundMusic, BackgroundMusicNodes } from "@/utils/audio";
@@ -226,9 +227,10 @@ export default function Dashboard() {
             <GardenPanel game={game} />
           </>
         ) : currentView === "addition" && activePlace ? (
-          <AdditionQuest
+          <PlaceQuest
             key={activePlace.id}
             place={activePlace}
+            operation={ADDITION}
             progress={progressOf(game, activePlace.id)}
             onProgress={(next) => updateGame((g) => ({ ...g, places: { ...g.places, [activePlace.id]: next } }))}
             onStars={addShards}

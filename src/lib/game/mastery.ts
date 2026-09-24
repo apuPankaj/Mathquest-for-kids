@@ -8,7 +8,7 @@
 //   - stars: 3 on the first try, 2 after a hint, 1 after being shown
 // Like questions.ts, this imports nothing that runs, so Node can load it.
 
-import type { Stage } from "./questions";
+import type { Stage } from "./core.ts";
 
 export const STAGES: Stage[] = ["objects", "pictures", "numbers"];
 export const STREAK_TO_MOVE_UP = 4;

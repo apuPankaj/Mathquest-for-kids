@@ -2,7 +2,7 @@
 // Each one teaches one level (see LEVELS in questions.ts). x and y are the
 // place's position on the map, as percentages.
 
-import type { Level } from "./questions";
+import type { Level } from "./core.ts";
 
 export interface AdditionPlace {
   id: string;

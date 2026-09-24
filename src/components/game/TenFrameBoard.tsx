@@ -1,16 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
 import { LayoutGroup, motion } from "motion/react";
-import type { AdditionQuestion } from "@/lib/addition/questions";
-import {
-  Board, Item, Look, Step, canJoin, demoStep, initialBoard, instruction, join, labelFor, tapEmpty, tapItem,
-} from "@/lib/addition/board";
+import type { Question } from "@/lib/game/core";
+import { Board, BoardKit, Item, Look, Step, present } from "@/lib/game/board";
 
 // The counting board: one or two ten-frames the child taps to put groups
-// together, count, fill a ten or make a ten. What each tap DOES is decided in
-// lib/addition/board.ts; this file only draws it and passes the taps on.
+// together, count, fill a ten, make a ten or take things away. What each tap
+// DOES is decided by the operation's board kit (lib/addition/board.ts,
+// lib/subtraction/board.ts); this file only draws it and passes the taps on.
 
 interface TenFrameBoardProps {
-  question: AdditionQuestion;
+  question: Question;
+  kit: BoardKit;
   look: Look; // real things (emoji), or plain coloured dots
   interactive: boolean; // can the child act on it? (objects stage)
   demo: boolean; // play the "Show me" demonstration
@@ -18,15 +18,15 @@ interface TenFrameBoardProps {
   say: (text: string) => void;
 }
 
-// One colour per number, matching the equation above the board.
+// One colour per number, matching the sum above the board.
 const GROUP_STYLE = {
   a: { dot: "bg-emerald-400", ring: "ring-emerald-400/70" },
   b: { dot: "bg-amber-400", ring: "ring-amber-400/70" },
   added: { dot: "bg-sky-400", ring: "ring-sky-400/70" },
 } as const;
 
-export default function TenFrameBoard({ question: q, look, interactive, demo, onDemoDone, say }: TenFrameBoardProps) {
-  const [board, setBoard] = useState<Board>(() => initialBoard(q, look));
+export default function TenFrameBoard({ question: q, kit, look, interactive, demo, onDemoDone, say }: TenFrameBoardProps) {
+  const [board, setBoard] = useState<Board>(() => kit.initialBoard(q, look));
 
   // The demonstration runs on a timer, so it reads the latest board and
   // callbacks through refs rather than from the render it started in.
@@ -50,7 +50,7 @@ export default function TenFrameBoard({ question: q, look, interactive, demo, on
     if (!demo) return;
     let timer: ReturnType<typeof setTimeout>;
     const tick = () => {
-      const step = demoStep(boardRef.current, q);
+      const step = kit.demoStep(boardRef.current, q);
       if (!step) {
         doneRef.current?.();
         return;
@@ -62,12 +62,14 @@ export default function TenFrameBoard({ question: q, look, interactive, demo, on
     };
     timer = setTimeout(tick, 1400); // let "Let me show you" finish first
     return () => clearTimeout(timer);
-  }, [demo, q]);
+  }, [demo, q, kit]);
 
   const canAct = interactive && !demo;
+  const actionLabel = canAct ? kit.action(board, q) : null;
 
   const renderItem = (item: Item) => {
-    const label = labelFor(board, q, item);
+    const label = kit.labelFor(board, q, item);
+    const taken = board.taken.includes(item.id);
     const faded = board.pre.includes(item.id) && label === null;
     const style = GROUP_STYLE[item.group];
     return (
@@ -76,19 +78,25 @@ export default function TenFrameBoard({ question: q, look, interactive, demo, on
         key={item.id}
         layoutId={`${q.key}-${item.id}`}
         initial={item.group === "added" ? { scale: 0 } : false}
-        animate={{ scale: 1, opacity: faded ? 0.55 : 1 }}
+        animate={{ scale: taken ? 0.85 : 1, opacity: taken ? 0.35 : faded ? 0.55 : 1, y: taken ? [0, -16, 0] : 0 }}
         transition={{ type: "spring", stiffness: 420, damping: 30 }}
-        onClick={() => canAct && apply(tapItem(boardRef.current, q, item.id))}
-        disabled={!canAct}
-        aria-label={label !== null ? String(label) : q.thing.one}
+        onClick={() => canAct && !taken && apply(kit.tapItem(boardRef.current, q, item.id))}
+        disabled={!canAct || taken}
+        aria-label={taken ? "taken away" : label !== null ? String(label) : q.thing.one}
         className={`relative w-full h-full flex items-center justify-center rounded-xl ${
-          canAct ? "cursor-pointer active:scale-90" : "cursor-default"
+          canAct && !taken ? "cursor-pointer active:scale-90" : "cursor-default"
         }`}
       >
         {look === "objects" ? (
-          <span className={`text-3xl sm:text-4xl leading-none rounded-full ring-2 ${style.ring} bg-white/10 p-0.5 select-none`}>
+          <span
+            className={`text-3xl sm:text-4xl leading-none rounded-full ring-2 bg-white/10 p-0.5 select-none ${
+              taken ? "ring-0 outline-2 outline-dashed outline-rose-300/70 grayscale" : style.ring
+            }`}
+          >
             {q.thing.emoji}
           </span>
+        ) : taken ? (
+          <span className="block w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-dashed border-rose-300" />
         ) : (
           <span className={`block w-8 h-8 sm:w-9 sm:h-9 rounded-full ${style.dot} shadow-inner`} />
         )}
@@ -96,7 +104,9 @@ export default function TenFrameBoard({ question: q, look, interactive, demo, on
           <motion.span
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
-            className="absolute -bottom-1 -right-1 min-w-6 h-6 px-1 rounded-full bg-white text-emerald-950 text-sm font-black flex items-center justify-center shadow"
+            className={`absolute -bottom-1 -right-1 min-w-6 h-6 px-1 rounded-full text-sm font-black flex items-center justify-center shadow ${
+              taken ? "bg-rose-200 text-rose-900" : "bg-white text-emerald-950"
+            }`}
           >
             {label}
           </motion.span>
@@ -108,13 +118,12 @@ export default function TenFrameBoard({ question: q, look, interactive, demo, on
   const renderFrame = (frame: number) => {
     const items = board.items.filter((it) => it.frame === frame);
     const bySlot = new Map(items.map((it) => [it.slot, it]));
-    const fillable = canAct && q.kind === "missing";
+    const fillable = canAct && kit.canFill(board, q);
+    const full = present(board, frame).length === 10;
     return (
       <div
         key={frame}
-        className={`grid grid-cols-5 gap-1.5 p-2 rounded-2xl bg-emerald-950/50 border-2 ${
-          items.length === 10 ? "border-amber-300" : "border-emerald-700/60"
-        }`}
+        className={`grid grid-cols-5 gap-1.5 p-2 rounded-2xl bg-emerald-950/50 border-2 ${full ? "border-amber-300" : "border-emerald-700/60"}`}
       >
         {Array.from({ length: board.cells }, (_, slot) => {
           const item = bySlot.get(slot);
@@ -125,7 +134,7 @@ export default function TenFrameBoard({ question: q, look, interactive, demo, on
               ) : fillable ? (
                 <button
                   type="button"
-                  onClick={() => apply(tapEmpty(boardRef.current, q))}
+                  onClick={() => apply(kit.tapEmpty(boardRef.current, q))}
                   aria-label="Fill this space"
                   className="w-full h-full rounded-xl border-2 border-dashed border-sky-300/70 animate-pulse cursor-pointer"
                 />
@@ -141,25 +150,27 @@ export default function TenFrameBoard({ question: q, look, interactive, demo, on
     <LayoutGroup id={q.key}>
       <div data-part="board" className="flex flex-col items-center gap-3">
         <div className="min-h-7 text-center text-lg font-bold text-amber-100">
-          {board.caption ?? (canAct ? instruction(board, q) : "")}
+          {board.caption ?? (canAct ? kit.instruction(board, q) : "")}
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-3">
           {Array.from({ length: board.frames }, (_, f) => (
             <React.Fragment key={f}>
-              {f > 0 && <span className="text-4xl font-black text-amber-300 font-fredoka">+</span>}
+              {f > 0 && board.plus && (
+                <span className="text-4xl font-black text-amber-300 font-fredoka">+</span>
+              )}
               {renderFrame(f)}
             </React.Fragment>
           ))}
         </div>
 
-        {canAct && canJoin(board, q) && (
+        {actionLabel && (
           <button
             type="button"
-            onClick={() => apply(join(boardRef.current, q))}
+            onClick={() => apply(kit.runAction(boardRef.current, q))}
             className="mt-1 px-6 py-3 rounded-2xl bg-sky-500 hover:bg-sky-400 text-white font-black text-xl shadow-[0_5px_0_#0369a1] active:shadow-none active:translate-y-[5px] transition-all animate-pulse"
           >
-            👐 Put them together
+            {actionLabel}
           </button>
         )}
       </div>

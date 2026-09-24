@@ -12,7 +12,7 @@
 // in step with each other.
 
 import { useSyncExternalStore } from "react";
-import { PlaceProgress, STAGES, freshProgress } from "./addition/mastery";
+import { PlaceProgress, STAGES, freshProgress } from "./game/mastery";
 
 export interface SavedGame {
   version: 1;

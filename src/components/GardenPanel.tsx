@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ADDITION_PLACES } from "@/lib/addition/places";
+import { ADDITION_PLACES } from "@/lib/game/places";
 import { LEVELS } from "@/lib/addition/questions";
 import { SavedGame, progressOf, startAgain } from "@/lib/savedGame";
 
