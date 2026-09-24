@@ -1,6 +1,7 @@
-// Checks the addition question maker and the stage rules.
+// Checks the question makers (addition and subtraction), their counting
+// boards, and the stage rules.
 //
-//   npm run check:addition
+//   npm run check
 //
 // Looking at a few questions on screen cannot prove the rules hold — one
 // question looks fine even when the rule behind it is broken. So this makes
@@ -12,8 +13,11 @@
 import {
   makeQuestion, twinOf, pairsFor, diagnose, hintFor, questionText, correctText, LEVELS,
 } from "../src/lib/addition/questions.ts";
-import { applyOutcome, freshProgress } from "../src/lib/addition/mastery.ts";
+import { applyOutcome, freshProgress } from "../src/lib/game/mastery.ts";
 import { initialBoard, demoStep, tapItem, tapEmpty, labelFor, bigGroup } from "../src/lib/addition/board.ts";
+import * as sub from "../src/lib/subtraction/questions.ts";
+import * as subBoard from "../src/lib/subtraction/board.ts";
+import { PLACES, isOpen, lockedReason } from "../src/lib/game/places.ts";
 
 let failures = 0;
 let checks = 0;
@@ -112,6 +116,83 @@ for (const [label, rng] of [["seeded", seeded(2026)], ["random", Math.random]]) 
       `${Math.round((100 * named) / distractors)}% of wrong choices are a named mistake`);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Subtraction questions — the same promises, plus: the answer is never 0
+// or below, and level 4 always has to go back through ten.
+// ---------------------------------------------------------------------------
+
+const subAllowed = (level, a, b) => sub.pairsFor(level).some(([x, y]) => x === a && y === b);
+for (const [label, rng] of [["seeded", seeded(2027)], ["random", Math.random]]) {
+  for (const level of [1, 2, 3, 4]) {
+    const seen = new Set();
+    const recent = [];
+    let named = 0;
+    let distractors = 0;
+
+    for (let i = 0; i < N; i++) {
+      const q = sub.makeQuestion(level, rng, recent.slice(-3));
+      const where = `subtraction level ${level} ${q.a}-${q.b}`;
+      seen.add(q.key);
+
+      check(subAllowed(level, q.a, q.b), `${where}: not an allowed pair`);
+      check(q.answer === q.a - q.b, `${where}: answer ${q.answer}, expected ${q.a - q.b}`);
+      check(q.answer >= 1, `${where}: answer ${q.answer} is not at least 1`);
+      if (level === 1) check(q.a <= 5, `${where}: level 1 starts above 5`);
+      if (level === 2) check(q.a >= 6 && q.a <= 10 && q.b <= 3, `${where}: level 2 outside 6-10 or takes more than 3`);
+      if (level === 3) check(q.a === 10, `${where}: level 3 doesn't start at 10`);
+      if (level === 4) check(q.a >= 11 && q.a <= 18 && q.b <= 9 && q.b > q.a - 10 && q.answer < 10,
+        `${where}: level 4 must go back through ten`);
+
+      check(q.choices.length === 3, `${where}: ${q.choices.length} choices`);
+      check(new Set(q.choices).size === 3, `${where}: repeated choice ${q.choices}`);
+      check(q.choices.includes(q.answer), `${where}: answer missing from ${q.choices}`);
+      check(q.choices.every((c) => Number.isInteger(c) && c >= 1), `${where}: bad choice in ${q.choices}`);
+      check(q.choices.every((c, j) => j === 0 || q.choices[j - 1] < c), `${where}: choices not in order`);
+
+      for (const c of q.choices.filter((c) => c !== q.answer)) {
+        distractors++;
+        if (sub.diagnose(q, c) !== "other") named++;
+        const hint = sub.hintFor(q, c);
+        check(hint.length > 0, `${where}: no hint for ${c}`);
+        // A hint may name the question's own numbers; it must not state the answer otherwise.
+        const own = [q.a, q.b, q.a - 10, 10].includes(q.answer);
+        check(own || !new RegExp(`\\b${q.answer}\\b`).test(hint), `${where}: hint for ${c} gives away the answer: "${hint}"`);
+      }
+
+      check(!recent.slice(-3).includes(q.key), `${where}: repeated within 3 questions`);
+      recent.push(q.key);
+
+      const t = sub.twinOf(q, rng);
+      check(t.level === q.level && !(t.a === q.a && t.b === q.b) && subAllowed(level, t.a, t.b), `${where}: bad twin ${t.a}-${t.b}`);
+      check(t.thing === q.thing, `${where}: twin counts different things`);
+
+      for (const stage of ["objects", "pictures", "numbers"]) {
+        const text = sub.questionText(q, stage);
+        // a lone "1" (not the 1 in "11") must never be followed by a plural
+        const loneOne = (word) => new RegExp(`(^|[^0-9])1 ${word}\\b`).test(text);
+        check(!loneOne("are") && (q.thing.one === q.thing.many || !loneOne(q.thing.many)), `${where}: "${text}"`);
+      }
+      const praise = sub.correctText(q, rng);
+      check(praise.includes(`${q.a} take away ${q.b} leaves ${q.answer}.`), `${where}: correct text "${praise}"`);
+      if (level === 3) check(praise.includes(`${q.answer} and ${q.b} make 10`), `${where}: level 3 should say the make-10 fact`);
+    }
+
+    const all = sub.pairsFor(level).length;
+    check(seen.size === all, `subtraction level ${level} (${label}): only ${seen.size} of ${all} questions came up`);
+    console.log(`subtraction level ${level} (${label}): ${N} questions, all ${seen.size}/${all} possible questions used, ` +
+      `${Math.round((100 * named) / distractors)}% of wrong choices are a named mistake`);
+  }
+}
+
+// The four named subtraction mistakes, each on a question where it is unambiguous.
+const sq = (level, a, b) => { let q; const rng = seeded(a * 31 + b); do q = sub.makeQuestion(level, rng); while (q.a !== a || q.b !== b); return q; };
+check(sub.diagnose(sq(4, 14, 6), 12) === "smallerFromLarger", "14 − 6 → 12 is smaller-from-larger");
+check(sub.diagnose(sq(2, 9, 3), 12) === "added", "9 − 3 → 12 is adding instead");
+check(sub.diagnose(sq(2, 9, 3), 7) === "countedStart", "9 − 3 → 7 is counting the starting number");
+check(sub.diagnose(sq(1, 5, 2), 2) === "gaveTaken", "5 − 2 → 2 is giving the number taken away");
+check(sub.hintFor(sq(4, 14, 6), 12) === "You can't take 6 from 4. Take away the 4 first, to get back to 10.",
+  `smaller-from-larger hint: "${sub.hintFor(sq(4, 14, 6), 12)}"`);
 
 // ---------------------------------------------------------------------------
 // Stage rules
@@ -230,6 +311,99 @@ for (const level of [1, 2, 3, 4]) {
   }
 }
 console.log(`counting board: ${boards} demonstrations and child play-throughs run to the end`);
+
+// ---------------------------------------------------------------------------
+// The subtraction board, for EVERY allowed question in both looks.
+// ---------------------------------------------------------------------------
+
+let subBoards = 0;
+for (const level of [1, 2, 3, 4]) {
+  for (const [a, b] of sub.pairsFor(level)) {
+    const q = sq(level, a, b);
+    const ones = a - 10;
+    const present = (bd) => bd.items.filter((it) => !bd.taken.includes(it.id)).length;
+    const labels = (bd) => bd.items.map((it) => subBoard.labelFor(bd, q, it)).filter((n) => n !== null);
+
+    for (const look of ["objects", "dots"]) {
+      const where = `subtraction board level ${level} ${a}-${b} (${look})`;
+      subBoards++;
+      let board = subBoard.initialBoard(q, look);
+
+      if (look === "dots") {
+        // Pictures arrive already crossed out, with no running count to read the answer from.
+        check(board.taken.length === b && present(board) === q.answer, `${where}: pictures should show ${b} crossed out`);
+        check(labels(board).every((n) => n !== q.answer || n === b), `${where}: pictures show a number that gives the answer away`);
+      } else if (level === 2 || level === 4) {
+        check(labels(board).length === 1 && labels(board)[0] === a, `${where}: should start with "${a}" showing`);
+      }
+
+      // 1. "Show me", from whatever the board starts as.
+      let lastSay = "";
+      let steps = 0;
+      const sayings = [];
+      for (let s = subBoard.demoStep(board, q); s; s = subBoard.demoStep(board, q)) {
+        board = s.board;
+        if (s.say) { lastSay = s.say; sayings.push(s.say); }
+        if (++steps > 80) break;
+      }
+      check(steps <= 80 && board.finished, `${where}: demonstration never finished`);
+      check(sayings[0] === `Start with ${a}.`, `${where}: demonstration should start "Start with ${a}." (got "${sayings[0]}")`);
+      check(new RegExp(`\\b${q.answer}\\b`).test(lastSay), `${where}: demonstration ended saying "${lastSay}"`);
+      check(board.taken.length === b && present(board) === q.answer, `${where}: demonstration left ${present(board)}, not ${q.answer}`);
+      if (level === 4) {
+        const firstOnes = board.taken.slice(0, ones);
+        check(firstOnes.every((id) => id.startsWith("o")), `${where}: the loose ones must go first`);
+        check(sayings.includes("10! Back to ten."), `${where}: demonstration never said "back to ten"`);
+        check(!sayings.includes(String(q.answer + 1)) || q.answer + 1 >= 10 || sayings.indexOf(String(q.answer + 1)) < sayings.indexOf(String(q.answer)),
+          `${where}: counting back out of order`);
+      }
+      if (level === 2) {
+        const counts = sayings.filter((t) => /^\d+$/.test(t)).map(Number);
+        check(counts.join() === Array.from({ length: b }, (_, i) => a - 1 - i).join(), `${where}: counted back ${counts}, expected ${a - 1} down to ${q.answer}`);
+      }
+
+      // 2. A child tapping (objects only — pictures are look-and-think).
+      if (look !== "objects") continue;
+      board = subBoard.initialBoard(q, look);
+      lastSay = "";
+      for (let guard = 0; guard < 60; guard++) {
+        const target = board.items.find((it) => !board.taken.includes(it.id) && !board.counted.includes(it.id));
+        const s = target ? subBoard.tapItem(board, q, target.id) : null;
+        if (!s || s.board === board) break;
+        board = s.board;
+        if (s.say) lastSay = s.say;
+      }
+      check(board.taken.length === b, `${where}: child took away ${board.taken.length}, not ${b}`);
+      if (level === 3) check(lastSay === `${b} taken away.`, `${where}: child ended on "${lastSay}"`);
+      else check(lastSay === String(q.answer), `${where}: child ended on "${lastSay}", not "${q.answer}"`);
+      if (level !== 3) check(Math.max(...labels(board)) === q.answer, `${where}: labels end at ${Math.max(...labels(board))}`);
+      else check(labels(board).join() === String(b), `${where}: level 3 shows one number, the ${b} taken away (got ${labels(board)})`);
+      // Tapping more than b never takes extra away.
+      const extra = board.items.find((it) => !board.taken.includes(it.id));
+      if (extra) check((subBoard.tapItem(board, q, extra.id)?.board.taken.length ?? b) === b, `${where}: took away more than ${b}`);
+    }
+  }
+}
+console.log(`subtraction board: ${subBoards} demonstrations and child play-throughs run to the end`);
+
+// ---------------------------------------------------------------------------
+// Which places are open
+// ---------------------------------------------------------------------------
+
+function openWith(mastered) {
+  const done = (id) => mastered.includes(id);
+  return PLACES.filter((p) => isOpen(p, done)).map((p) => p.id).join(",");
+}
+const place = (id) => PLACES.find((p) => p.id === id);
+check(openWith([]) === "j1", `nothing mastered: only Pebble Meadows open (got ${openWith([])})`);
+check(openWith(["j1"]) === "j1,j2,s1", `Pebble Meadows mastered opens Whispering Vines and Firefly Falls (got ${openWith(["j1"])})`);
+check(openWith(["j1", "s1"]) === "j1,j2,s1", `Echo Hollow also needs Whispering Vines (got ${openWith(["j1", "s1"])})`);
+check(openWith(["j1", "j2", "s1"]) === "j1,j2,j3,s1,s2", `got ${openWith(["j1", "j2", "s1"])}`);
+check(!openWith(["j1", "j2", "j3", "s1", "s2", "s3"]).includes("s4"), "Sunstone Bridge waits for Numeria Gate");
+check(openWith(["j1", "j2", "j3", "j4", "s1", "s2", "s3"]).includes("s4"), "Sunstone Bridge opens with Numeria Gate and Grove of Ten");
+check(lockedReason(place("s1"), () => false) === "After Pebble Meadows", `locked reason: "${lockedReason(place("s1"), () => false)}"`);
+check(lockedReason(place("s2"), (id) => id === "j2") === "Locked 🔒", "a place waiting only on its own trail just says Locked");
+check(new Set(PLACES.map((p) => p.id)).size === PLACES.length, "every place has its own id (progress is saved under it)");
 
 // ---------------------------------------------------------------------------
 

@@ -6,44 +6,19 @@
 // by `npm run check:addition`, which makes thousands of questions and tests
 // every rule below.
 //
-// This file deliberately imports nothing, so that check script can load it
-// directly with Node.
+// The shared pieces (levels, the things to count, choices) are in
+// lib/game/core.ts.
 
-export type Level = 1 | 2 | 3 | 4;
+import { PRAISE, THINGS, pick, things, threeChoices } from "../game/core.ts";
+import type { EquationPart, Level, Question, Rng, Stage, Thing } from "../game/core.ts";
 
 // "sum" asks a + b = ?   "missing" asks a + ? = 10
 export type QuestionKind = "sum" | "missing";
 
-// The everyday things a child counts. `one` and `many` let the voice say
-// "1 mango" but "3 mangoes".
-export interface Thing {
-  emoji: string;
-  one: string;
-  many: string;
-}
-
-export const THINGS: Thing[] = [
-  { emoji: "🥭", one: "mango", many: "mangoes" },
-  { emoji: "🍎", one: "apple", many: "apples" },
-  { emoji: "🍌", one: "banana", many: "bananas" },
-  { emoji: "🦆", one: "duck", many: "ducks" },
-  { emoji: "🐟", one: "fish", many: "fish" },
-  { emoji: "🐥", one: "chick", many: "chicks" },
-  { emoji: "🌼", one: "flower", many: "flowers" },
-  { emoji: "🐞", one: "ladybird", many: "ladybirds" },
-  { emoji: "🎈", one: "balloon", many: "balloons" },
-];
-
-export interface AdditionQuestion {
-  key: string; // e.g. "2:6+3" — used so the same question doesn't come twice in a row
-  level: Level;
+export interface AdditionQuestion extends Question {
   kind: QuestionKind;
-  a: number;
-  b: number;
   total: number; // always a + b
-  answer: number; // "sum": the total. "missing": b, the number that was hidden
-  choices: number[]; // three options, smallest first, one of them the answer
-  thing: Thing;
+  // answer — "sum": the total. "missing": b, the number that was hidden
 }
 
 // What each level teaches, in the words the map and the grown-ups see.
@@ -53,14 +28,6 @@ export const LEVELS: Record<Level, { skill: string; kind: QuestionKind }> = {
   3: { skill: "Make 10", kind: "missing" },
   4: { skill: "Add up to 20", kind: "sum" },
 };
-
-// A random-number source. The game uses Math.random; the check script passes
-// a seeded one so a failure can be reproduced exactly.
-export type Rng = () => number;
-
-function pick<T>(items: T[], rng: Rng): T {
-  return items[Math.floor(rng() * items.length)];
-}
 
 // Every [a, b] pair a level is allowed to ask. The levels are small enough to
 // list in full, which makes "is this question allowed?" a simple lookup.
@@ -110,13 +77,7 @@ function choicesFor(level: Level, kind: QuestionKind, a: number, b: number, rng:
   }
 
   // One counting slip, then the most telling mistake, then anything nearby.
-  const ordered = [slips[0], ...specific, slips[1], answer + 2, answer - 2, answer + 3, answer + 4];
-  const choices = [answer];
-  for (const n of ordered) {
-    if (choices.length === 3) break;
-    if (Number.isInteger(n) && n >= 1 && !choices.includes(n)) choices.push(n);
-  }
-  return choices.sort((x, y) => x - y);
+  return threeChoices(answer, [slips[0], ...specific, slips[1], answer + 2, answer - 2, answer + 3, answer + 4]);
 }
 
 function build(level: Level, a: number, b: number, thing: Thing, rng: Rng): AdditionQuestion {
@@ -179,12 +140,6 @@ export function diagnose(q: AdditionQuestion, given: number): Mistake {
 // Words. Short, spoken-aloud sentences a 5-year-old can follow.
 // ---------------------------------------------------------------------------
 
-export type Stage = "objects" | "pictures" | "numbers";
-
-function things(n: number, thing: Thing): string {
-  return `${n} ${n === 1 ? thing.one : thing.many}`;
-}
-
 // The question, as the voice reads it.
 export function questionText(q: AdditionQuestion, stage: Stage): string {
   if (q.kind === "missing") {
@@ -229,10 +184,28 @@ export function hintFor(q: AdditionQuestion, given: number): string {
   }
 }
 
-const PRAISE = ["Yes!", "Well done!", "Brilliant!", "You got it!", "Super!"];
-
 // What the game says when the answer is right — the praise, then the fact
 // itself, so the child hears "3 and 2 make 5" again and again.
 export function correctText(q: AdditionQuestion, rng: Rng = Math.random): string {
   return `${pick(PRAISE, rng)} ${q.a} and ${q.b} make ${q.total}.`;
+}
+
+// The sum on screen: 3 + 2 = ?   or   7 + ? = 10
+export function equation(q: AdditionQuestion, solved: boolean): EquationPart[] {
+  if (q.kind === "missing") {
+    return [
+      { text: String(q.a), tone: "a" },
+      { text: "+", tone: "op" },
+      { text: solved ? String(q.answer) : "?", tone: "missing" },
+      { text: "=", tone: "op" },
+      { text: "10", tone: "result" },
+    ];
+  }
+  return [
+    { text: String(q.a), tone: "a" },
+    { text: "+", tone: "op" },
+    { text: String(q.b), tone: "b" },
+    { text: "=", tone: "op" },
+    { text: solved ? String(q.answer) : "?", tone: "result" },
+  ];
 }

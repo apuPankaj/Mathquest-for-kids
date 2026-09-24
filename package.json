@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "check:addition": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/checkAddition.mjs"
+    "check": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/check.mjs"
   },
   "dependencies": {
     "motion": "^12.43.0",

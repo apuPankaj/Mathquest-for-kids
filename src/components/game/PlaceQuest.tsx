@@ -1,17 +1,19 @@
 import React, { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import {
-  AdditionQuestion, LEVELS, Stage, correctText, hintFor, makeQuestion, questionText, twinOf,
-} from "@/lib/addition/questions";
-import { Outcome, PlaceProgress, STAGES, STREAK_TO_MOVE_UP, applyOutcome, starsFor } from "@/lib/addition/mastery";
-import type { AdditionPlace } from "@/lib/addition/places";
+import type { EquationPart, Question, Stage } from "@/lib/game/core";
+import type { Operation } from "@/lib/game/operation";
+import { Outcome, PlaceProgress, STAGES, STREAK_TO_MOVE_UP, applyOutcome, starsFor } from "@/lib/game/mastery";
+import type { Place } from "@/lib/game/places";
 import { speak, stopSpeaking } from "@/lib/speech";
 import { playSuccessSound } from "@/utils/audio";
 import TenFrameBoard from "./TenFrameBoard";
 import AnswerChoices from "./AnswerChoices";
 import NumberPad from "./NumberPad";
 
-// One addition place: a question at a time, at the child's current stage.
+// One place on the map: a question at a time, at the child's current stage.
+// It runs any operation — addition, subtraction — through the Operation it is
+// given (lib/game/operation.ts), so every operation gets the same stages,
+// the same help and the same stars.
 //   objects  — real things on the board, which the child taps to count
 //   pictures — coloured dots on the board, to look at and think
 //   numbers  — just the sum, typed on a number pad
@@ -21,10 +23,11 @@ import NumberPad from "./NumberPad";
 //   2nd wrong answer → "Show me": the board works it out step by step, the
 //                      right answer lights up, and then comes a TWIN question
 //                      (nearly the same) for the child to do on their own
-// The rules for moving between stages are in lib/addition/mastery.ts.
+// The rules for moving between stages are in lib/game/mastery.ts.
 
-interface AdditionQuestProps {
-  place: AdditionPlace;
+interface PlaceQuestProps {
+  place: Place;
+  operation: Operation;
   progress: PlaceProgress;
   onProgress: (next: PlaceProgress) => void;
   onStars: (stars: number) => void;
@@ -36,7 +39,7 @@ interface AdditionQuestProps {
 // when the question is made, so moving up a stage never redraws the question
 // the child has just answered.
 interface Current {
-  q: AdditionQuestion;
+  q: Question;
   stage: Stage;
   serial: number; // makes the board start fresh even if a question repeats later
   intro: string | null; // said before the question, e.g. for a twin
@@ -63,9 +66,19 @@ const MOVED_BACK: Record<Stage, string> = {
   numbers: "",
 };
 
-export default function AdditionQuest({ place, progress, onProgress, onStars, onExit, soundOn }: AdditionQuestProps) {
+// Colours for the pieces of the sum, matching the board.
+const TONE: Record<EquationPart["tone"], string> = {
+  a: "text-emerald-300",
+  b: "text-amber-300",
+  taken: "text-rose-300",
+  missing: "text-sky-300",
+  op: "text-amber-200",
+  result: "text-amber-100",
+};
+
+export default function PlaceQuest({ place, operation, progress, onProgress, onStars, onExit, soundOn }: PlaceQuestProps) {
   const [current, setCurrent] = useState<Current>(() => ({
-    q: makeQuestion(place.level),
+    q: operation.makeQuestion(place.level),
     stage: progress.stage,
     serial: 0,
     intro: null,
@@ -102,16 +115,16 @@ export default function AdditionQuest({ place, progress, onProgress, onStars, on
   // Read each new question aloud.
   useEffect(() => {
     const t = setTimeout(() => {
-      const text = questionText(current.q, current.stage);
+      const text = operation.questionText(current.q, current.stage);
       if (soundRef.current) speak(current.intro ? `${current.intro} ${text}` : text);
     }, 450);
     return () => clearTimeout(t);
-  }, [current]);
+  }, [current, operation]);
 
   const recent = useRef<string[]>([current.q.key]);
 
-  const nextQuestion = (nextStage: Stage, twinFrom: AdditionQuestion | null) => {
-    const nq = twinFrom ? twinOf(twinFrom) : makeQuestion(place.level, Math.random, recent.current.slice(-3));
+  const nextQuestion = (nextStage: Stage, twinFrom: Question | null) => {
+    const nq = twinFrom ? operation.twinOf(twinFrom) : operation.makeQuestion(place.level, Math.random, recent.current.slice(-3));
     recent.current.push(nq.key);
     const intro = twinFrom ? "Now you try one like it." : null;
     setCurrent((c) => ({ q: nq, stage: nextStage, serial: c.serial + 1, intro }));
@@ -134,7 +147,7 @@ export default function AdditionQuest({ place, progress, onProgress, onStars, on
       const nowTried = [...tried, n];
       setTried(nowTried);
       if (nowTried.length === 1) {
-        const hint = hintFor(q, n);
+        const hint = operation.hintFor(q, n);
         setPhase("hinted");
         setMessage(hint);
         say(hint);
@@ -152,7 +165,7 @@ export default function AdditionQuest({ place, progress, onProgress, onStars, on
     onStars(starsFor(outcome));
     setEarned(starsFor(outcome));
     setPhase("solved");
-    const praise = correctText(q);
+    const praise = operation.correctText(q);
     setMessage(praise);
     say(praise);
     if (soundOn) playSuccessSound();
@@ -198,7 +211,7 @@ export default function AdditionQuest({ place, progress, onProgress, onStars, on
         </button>
         <div className="text-center">
           <h2 className="text-xl sm:text-2xl font-black text-amber-200">{place.title}</h2>
-          <p className="text-xs text-emerald-300 font-bold">{LEVELS[place.level].skill}</p>
+          <p className="text-xs text-emerald-300 font-bold">{operation.skill(place.level)}</p>
         </div>
         <div className="flex items-center gap-1.5" aria-label={`Stage: ${STAGE_LABEL[stage].name}`}>
           {STAGES.map((s, i) => (
@@ -225,24 +238,17 @@ export default function AdditionQuest({ place, progress, onProgress, onStars, on
       {/* The sum, coloured to match the board, and a button to hear it again */}
       <div className="flex items-center justify-center gap-3 mb-4">
         <div data-part="equation" className="text-center text-6xl sm:text-7xl font-black font-fredoka drop-shadow-[0_4px_6px_rgba(0,0,0,0.5)] select-none">
-          {q.kind === "missing" ? (
-            <>
-              <span className="text-emerald-300">{q.a}</span> <span className="text-amber-200">+</span>{" "}
-              <span className="text-sky-300">{phase === "solved" ? q.answer : "?"}</span> <span className="text-amber-200">=</span>{" "}
-              <span className="text-amber-100">10</span>
-            </>
-          ) : (
-            <>
-              <span className="text-emerald-300">{q.a}</span> <span className="text-amber-200">+</span>{" "}
-              <span className="text-amber-300">{q.b}</span> <span className="text-amber-200">=</span>{" "}
-              <span className="text-amber-100">{phase === "solved" ? q.answer : "?"}</span>
-            </>
-          )}
+          {operation.equation(q, phase === "solved").map((part, i) => (
+            <React.Fragment key={i}>
+              {i > 0 && " "}
+              <span className={TONE[part.tone]}>{part.text}</span>
+            </React.Fragment>
+          ))}
         </div>
         {soundOn && (
           <button
             type="button"
-            onClick={() => say(questionText(q, stage))}
+            onClick={() => say(operation.questionText(q, stage))}
             aria-label="Hear the question again"
             className="w-12 h-12 shrink-0 rounded-full bg-sky-500 hover:bg-sky-400 text-2xl shadow-[0_4px_0_#0369a1] active:shadow-none active:translate-y-1"
           >
@@ -257,6 +263,7 @@ export default function AdditionQuest({ place, progress, onProgress, onStars, on
           <TenFrameBoard
             key={`${current.serial}-${stage}`}
             question={q}
+            kit={operation.board}
             look={stage === "objects" ? "objects" : "dots"}
             interactive={stage === "objects" && (phase === "asking" || phase === "hinted")}
             demo={showing}
