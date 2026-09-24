@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 import type { EquationPart, Question, Stage } from "@/lib/game/core";
 import type { Operation } from "@/lib/game/operation";
 import { Outcome, PlaceProgress, STAGES, STREAK_TO_MOVE_UP, applyOutcome, starsFor } from "@/lib/game/mastery";
-import type { AdditionPlace } from "@/lib/game/places";
+import type { Place } from "@/lib/game/places";
 import { speak, stopSpeaking } from "@/lib/speech";
 import { playSuccessSound } from "@/utils/audio";
 import TenFrameBoard from "./TenFrameBoard";
@@ -26,7 +26,7 @@ import NumberPad from "./NumberPad";
 // The rules for moving between stages are in lib/game/mastery.ts.
 
 interface PlaceQuestProps {
-  place: AdditionPlace;
+  place: Place;
   operation: Operation;
   progress: PlaceProgress;
   onProgress: (next: PlaceProgress) => void;

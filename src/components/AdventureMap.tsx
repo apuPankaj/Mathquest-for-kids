@@ -1,10 +1,20 @@
 import React from "react";
 import { motion } from "motion/react";
-import { Realm, MathNode } from "@/types";
+import { MathNode } from "@/types";
 import { playLockedSound, playToggleSound } from "@/utils/audio";
 
+// A switch between trails at the top of the map (the Junior realm's
+// adding and taking-away trails).
+export interface MapTab {
+  id: string;
+  label: string;
+  active: boolean;
+  onSelect: () => void;
+}
+
 interface AdventureMapProps {
-  realm: Realm;
+  title: string;
+  tabs?: MapTab[];
   activeNodes: MathNode[];
   onNodeClick: (node: MathNode) => void;
   audioGuide: boolean;
@@ -50,7 +60,8 @@ const GARDEN = [
 ];
 
 export default function AdventureMap({
-  realm,
+  title,
+  tabs,
   activeNodes,
   onNodeClick,
   audioGuide,
@@ -65,11 +76,33 @@ export default function AdventureMap({
     <section className="lg:col-span-3 bg-gradient-to-br from-[#faf6eb] to-[#f5ebd6] rounded-3xl border-6 border-[#8b5a2b] shadow-2xl relative min-h-[620px] md:min-h-[580px] flex flex-col overflow-hidden">
       {/* Map Top Header Parchment style */}
       <div className="bg-[#e9dcc3] border-b-2 border-dashed border-[#8b5a2b]/30 py-3 px-6 flex items-center justify-between font-bold text-[#5c3a21]">
-        <span className="flex items-center gap-2 text-lg">
-          🗺️ Adventure Map: {realm === "junior" ? "Junior Realm Meadows" : "Guardian Peaks"}
-        </span>
+        <span className="flex items-center gap-2 text-lg">🗺️ {title}</span>
         <span className="text-sm font-semibold opacity-75">Tap a place to play!</span>
       </div>
+
+      {tabs && (
+        <div className="flex gap-2 px-3 py-2 bg-[#efe3cb] border-b-2 border-dashed border-[#8b5a2b]/30" role="tablist">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={tab.active}
+              onClick={() => {
+                if (audioGuide && !tab.active) playToggleSound();
+                tab.onSelect();
+              }}
+              className={`flex-1 px-3 py-2 rounded-xl text-sm sm:text-base font-extrabold transition-all ${
+                tab.active
+                  ? "bg-[#8b5a2b] text-amber-50 shadow-md"
+                  : "bg-[#fdfaf3] text-[#5c3a21] border-2 border-[#8b5a2b]/40 hover:border-[#8b5a2b]"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Canvas Viewport containing nodes */}
       <div className="flex-1 relative p-6 bg-[radial-gradient(#8b5a2b_1px,transparent_1px)] [background-size:24px_24px] opacity-95 flex items-center justify-center">
@@ -170,7 +203,7 @@ export default function AdventureMap({
                 {/* Miniature visual hint of operation type */}
                 <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-white border border-[#8b5a2b] flex items-center justify-center text-xs font-bold text-[#8b5a2b] shadow-xs">
                   {node.mathType === "addition" && "+"}
-                  {node.mathType === "subtraction" && "-"}
+                  {node.mathType === "subtraction" && "−"}
                   {node.mathType === "multiplication" && "×"}
                   {node.mathType === "division" && "÷"}
                 </div>
@@ -181,12 +214,12 @@ export default function AdventureMap({
                 <span className="block text-xs font-extrabold text-[#5c3a21] whitespace-nowrap">
                   {node.title}
                 </span>
-                <span className="block text-[9px] text-[#b45309] font-bold">
+                <span className="block text-[9px] text-[#b45309] font-bold whitespace-nowrap">
                   {node.completed
                     ? "Grown! 🌳"
                     : node.unlocked
                       ? (node.caption ?? node.questions[0]?.problem)
-                      : "Locked 🔒"}
+                      : (node.lockedCaption ?? "Locked 🔒")}
                 </span>
               </div>
             </button>

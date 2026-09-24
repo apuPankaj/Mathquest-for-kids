@@ -17,6 +17,7 @@ import { applyOutcome, freshProgress } from "../src/lib/game/mastery.ts";
 import { initialBoard, demoStep, tapItem, tapEmpty, labelFor, bigGroup } from "../src/lib/addition/board.ts";
 import * as sub from "../src/lib/subtraction/questions.ts";
 import * as subBoard from "../src/lib/subtraction/board.ts";
+import { PLACES, isOpen, lockedReason } from "../src/lib/game/places.ts";
 
 let failures = 0;
 let checks = 0;
@@ -331,7 +332,7 @@ for (const level of [1, 2, 3, 4]) {
       if (look === "dots") {
         // Pictures arrive already crossed out, with no running count to read the answer from.
         check(board.taken.length === b && present(board) === q.answer, `${where}: pictures should show ${b} crossed out`);
-        check(level === 3 || labels(board).length === 0, `${where}: pictures show a number that gives the answer away`);
+        check(labels(board).every((n) => n !== q.answer || n === b), `${where}: pictures show a number that gives the answer away`);
       } else if (level === 2 || level === 4) {
         check(labels(board).length === 1 && labels(board)[0] === a, `${where}: should start with "${a}" showing`);
       }
@@ -376,7 +377,7 @@ for (const level of [1, 2, 3, 4]) {
       if (level === 3) check(lastSay === `${b} taken away.`, `${where}: child ended on "${lastSay}"`);
       else check(lastSay === String(q.answer), `${where}: child ended on "${lastSay}", not "${q.answer}"`);
       if (level !== 3) check(Math.max(...labels(board)) === q.answer, `${where}: labels end at ${Math.max(...labels(board))}`);
-      else check(Math.max(...labels(board)) === b, `${where}: level 3 labels the ${b} taken away`);
+      else check(labels(board).join() === String(b), `${where}: level 3 shows one number, the ${b} taken away (got ${labels(board)})`);
       // Tapping more than b never takes extra away.
       const extra = board.items.find((it) => !board.taken.includes(it.id));
       if (extra) check((subBoard.tapItem(board, q, extra.id)?.board.taken.length ?? b) === b, `${where}: took away more than ${b}`);
@@ -384,6 +385,25 @@ for (const level of [1, 2, 3, 4]) {
   }
 }
 console.log(`subtraction board: ${subBoards} demonstrations and child play-throughs run to the end`);
+
+// ---------------------------------------------------------------------------
+// Which places are open
+// ---------------------------------------------------------------------------
+
+function openWith(mastered) {
+  const done = (id) => mastered.includes(id);
+  return PLACES.filter((p) => isOpen(p, done)).map((p) => p.id).join(",");
+}
+const place = (id) => PLACES.find((p) => p.id === id);
+check(openWith([]) === "j1", `nothing mastered: only Pebble Meadows open (got ${openWith([])})`);
+check(openWith(["j1"]) === "j1,j2,s1", `Pebble Meadows mastered opens Whispering Vines and Firefly Falls (got ${openWith(["j1"])})`);
+check(openWith(["j1", "s1"]) === "j1,j2,s1", `Echo Hollow also needs Whispering Vines (got ${openWith(["j1", "s1"])})`);
+check(openWith(["j1", "j2", "s1"]) === "j1,j2,j3,s1,s2", `got ${openWith(["j1", "j2", "s1"])}`);
+check(!openWith(["j1", "j2", "j3", "s1", "s2", "s3"]).includes("s4"), "Sunstone Bridge waits for Numeria Gate");
+check(openWith(["j1", "j2", "j3", "j4", "s1", "s2", "s3"]).includes("s4"), "Sunstone Bridge opens with Numeria Gate and Grove of Ten");
+check(lockedReason(place("s1"), () => false) === "After Pebble Meadows", `locked reason: "${lockedReason(place("s1"), () => false)}"`);
+check(lockedReason(place("s2"), (id) => id === "j2") === "Locked 🔒", "a place waiting only on its own trail just says Locked");
+check(new Set(PLACES.map((p) => p.id)).size === PLACES.length, "every place has its own id (progress is saved under it)");
 
 // ---------------------------------------------------------------------------
 

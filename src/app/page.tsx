@@ -8,11 +8,18 @@ import AdventureMap from "@/components/AdventureMap";
 import BattleArena from "@/components/BattleArena";
 import GardenPanel from "@/components/GardenPanel";
 import PlaceQuest from "@/components/game/PlaceQuest";
-import { ADDITION_PLACES, AdditionPlace } from "@/lib/game/places";
+import { PLACES, Place, TRAILS, Trail, isOpen, lockedReason, placesOn } from "@/lib/game/places";
+import type { Operation } from "@/lib/game/operation";
 import { ADDITION } from "@/lib/addition";
-import { LEVELS } from "@/lib/addition/questions";
+import { SUBTRACTION } from "@/lib/subtraction";
 import { progressOf, updateGame, useSavedGame } from "@/lib/savedGame";
 import { playToggleSound, playBackgroundMusic, stopBackgroundMusic, BackgroundMusicNodes } from "@/utils/audio";
+
+// Which operation runs each trail's places.
+const OPERATIONS: Record<Trail, Operation> = {
+  adding: ADDITION,
+  subtracting: SUBTRACTION,
+};
 
 export default function Dashboard() {
   // 1. Core State
@@ -52,18 +59,22 @@ export default function Dashboard() {
     };
   }, [musicPlaying]);
 
-  // 4. The Junior realm is the addition path: four places, each opening when
-  // the one before it is mastered.
-  const [activePlace, setActivePlace] = useState<AdditionPlace | null>(null);
-  const juniorNodes: MathNode[] = ADDITION_PLACES.map((place, i) => ({
+  // 4. The Junior realm has two trails — adding and taking away — with a
+  // switch between them on the map. Which places are open is decided in
+  // lib/game/places.ts.
+  const [trail, setTrail] = useState<Trail>("adding");
+  const [activePlace, setActivePlace] = useState<Place | null>(null);
+  const isMastered = (id: string) => progressOf(game, id).mastered;
+  const juniorNodes: MathNode[] = placesOn(trail).map((place) => ({
     id: place.id,
     title: place.title,
-    mathType: "addition",
+    mathType: OPERATIONS[place.trail].id,
     questions: [],
     reward: 0,
-    unlocked: i === 0 || progressOf(game, ADDITION_PLACES[i - 1].id).mastered,
-    completed: progressOf(game, place.id).mastered,
-    caption: LEVELS[place.level].skill,
+    unlocked: isOpen(place, isMastered),
+    completed: isMastered(place.id),
+    caption: OPERATIONS[place.trail].skill(place.level),
+    lockedCaption: lockedReason(place, isMastered),
     x: place.x,
     y: place.y,
   }));
@@ -142,7 +153,7 @@ export default function Dashboard() {
   // 7. Node and Quest handlers
   const handleNodeClick = (node: MathNode) => {
     if (realm === "junior") {
-      const place = ADDITION_PLACES.find((p) => p.id === node.id);
+      const place = PLACES.find((p) => p.id === node.id);
       if (place && node.unlocked) {
         setActivePlace(place);
         setCurrentView("addition");
@@ -215,7 +226,17 @@ export default function Dashboard() {
           <>
             {/* Left Side Viewport: Adventure Map (75% on desktop / Col span 3) */}
             <AdventureMap
-              realm={realm}
+              title={realm === "junior" ? `Junior Realm: ${TRAILS[trail].name}` : "Guardian Peaks"}
+              tabs={
+                realm === "junior"
+                  ? (Object.keys(TRAILS) as Trail[]).map((t) => ({
+                      id: t,
+                      label: `${TRAILS[t].sign} ${TRAILS[t].name}`,
+                      active: t === trail,
+                      onSelect: () => setTrail(t),
+                    }))
+                  : undefined
+              }
               activeNodes={activeNodes}
               onNodeClick={handleNodeClick}
               audioGuide={audioGuide}
@@ -230,7 +251,7 @@ export default function Dashboard() {
           <PlaceQuest
             key={activePlace.id}
             place={activePlace}
-            operation={ADDITION}
+            operation={OPERATIONS[activePlace.trail]}
             progress={progressOf(game, activePlace.id)}
             onProgress={(next) => updateGame((g) => ({ ...g, places: { ...g.places, [activePlace.id]: next } }))}
             onStars={addShards}
