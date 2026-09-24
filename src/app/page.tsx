@@ -2,10 +2,8 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { Realm, MathNode } from "@/types";
-import { initialGuardianNodes } from "@/data/mockData";
 import Header from "@/components/Header";
 import AdventureMap from "@/components/AdventureMap";
-import BattleArena from "@/components/BattleArena";
 import GardenPanel from "@/components/GardenPanel";
 import PlaceQuest from "@/components/game/PlaceQuest";
 import { PLACES, Place, TRAILS, Trail, isOpen, lockedReason, placesOn, trailsIn } from "@/lib/game/places";
@@ -13,6 +11,7 @@ import type { Operation } from "@/lib/game/operation";
 import { ADDITION } from "@/lib/addition";
 import { SUBTRACTION } from "@/lib/subtraction";
 import { MULTIPLICATION } from "@/lib/multiplication";
+import { DIVISION } from "@/lib/division";
 import { progressOf, updateGame, useSavedGame } from "@/lib/savedGame";
 import { playToggleSound, playBackgroundMusic, stopBackgroundMusic, BackgroundMusicNodes } from "@/utils/audio";
 
@@ -21,11 +20,8 @@ const OPERATIONS: Record<Trail, Operation> = {
   adding: ADDITION,
   subtracting: SUBTRACTION,
   multiplying: MULTIPLICATION,
+  dividing: DIVISION,
 };
-
-// A tab on the map: one of the trails, or the Guardian realm's old division
-// questions, which stay until division is rebuilt.
-type MapTrail = Trail | "dividing";
 
 export default function Dashboard() {
   // 1. Core State
@@ -34,14 +30,9 @@ export default function Dashboard() {
   const game = useSavedGame();
   const starShards = game.starShards;
   const addShards = (n: number) => updateGame((g) => ({ ...g, starShards: g.starShards + n }));
-  const [successAnimation, setSuccessAnimation] = useState<boolean>(false);
-  const [answerInput, setAnswerInput] = useState<string>("");
-  const [questError, setQuestError] = useState<boolean>(false);
-  const [questSuccess, setQuestSuccess] = useState<boolean>(false);
   const [musicPlaying, setMusicPlaying] = useState<boolean>(false);
   const [audioGuide, setAudioGuide] = useState<boolean>(true);
-  const [currentView, setCurrentView] = useState<string>("map");
-  const [activeQuest, setActiveQuest] = useState<MathNode | null>(null);
+  const [currentView, setCurrentView] = useState<"map" | "place">("map");
 
   // Background Music controller
   const musicNodesRef = useRef<BackgroundMusicNodes | null>(null);
@@ -65,20 +56,18 @@ export default function Dashboard() {
     };
   }, [musicPlaying]);
 
-  // 4. Each realm has trails, with a switch between them on the map: adding
-  // and taking away in the Junior realm; multiplying (and the old division
-  // questions) in the Guardian realm. Each realm remembers which trail was
-  // showing. Which places are open is decided in lib/game/places.ts.
-  const [trailOf, setTrailOf] = useState<Record<Realm, MapTrail>>({ junior: "adding", guardian: "multiplying" });
+  // Each realm has two trails, with a switch between them on the map: adding
+  // and taking away in the Junior realm, multiplying and dividing in the
+  // Guardian realm. Each realm remembers which trail was showing. Which places
+  // are open is decided in lib/game/places.ts.
+  const [trailOf, setTrailOf] = useState<Record<Realm, Trail>>({ junior: "adding", guardian: "multiplying" });
   const trail = trailOf[realm];
   const [activePlace, setActivePlace] = useState<Place | null>(null);
   const isMastered = (id: string) => progressOf(game, id).mastered;
-  const placeNodes: MathNode[] = (trail === "dividing" ? [] : placesOn(trail)).map((place) => ({
+  const placeNodes: MathNode[] = placesOn(trail).map((place) => ({
     id: place.id,
     title: place.title,
     mathType: OPERATIONS[place.trail].id,
-    questions: [],
-    reward: 0,
     unlocked: isOpen(place, isMastered),
     completed: isMastered(place.id),
     caption: OPERATIONS[place.trail].skill(place.level),
@@ -86,100 +75,18 @@ export default function Dashboard() {
     x: place.x,
     y: place.y,
   }));
+  const mapTabs = trailsIn(realm).map((t) => ({ id: t, label: `${TRAILS[t].sign} ${TRAILS[t].name}` }));
 
-  // The Guardian realm's old division questions, unchanged until division is rebuilt.
-  const [guardianNodes, setGuardianNodes] = useState<MathNode[]>(initialGuardianNodes);
-
-  const activeNodes = trail === "dividing" ? guardianNodes : placeNodes;
-  const mapTabs = [
-    ...trailsIn(realm).map((t): { id: MapTrail; label: string } => ({ id: t, label: `${TRAILS[t].sign} ${TRAILS[t].name}` })),
-    ...(realm === "guardian" ? [{ id: "dividing" as MapTrail, label: "➗ Crystal Caves" }] : []),
-  ];
-
-  // 6. Handle Solve Quest
-  const handleAnswerSelect = (option: string, currentQuestionIndex: number, advanceQuestion: () => void) => {
-    if (!activeQuest) return;
-    setAnswerInput(option);
-    
-    const currentQuestion = activeQuest.questions[currentQuestionIndex];
-    if (!currentQuestion) return;
-
-    if (option === currentQuestion.answer) {
-      setQuestSuccess(true);
-      setQuestError(false);
-      
-      const isLastQuestion = currentQuestionIndex === activeQuest.questions.length - 1;
-
-      if (isLastQuestion) {
-        setSuccessAnimation(true);
-        
-        // Award star shards (only if not completed before, or half if completed again)
-        const earnedShards = activeQuest.completed ? Math.floor(activeQuest.reward / 5) : activeQuest.reward;
-        addShards(earnedShards);
-
-        // Update Node lists to mark completed and unlock next node
-        const nodeUpdater = (nodes: MathNode[]) => {
-          const index = nodes.findIndex(n => n.id === activeQuest.id);
-          if (index === -1) return nodes;
-          
-          const updated = [...nodes];
-          updated[index] = { ...updated[index], completed: true };
-          
-          // Unlock next node in line
-          if (index + 1 < updated.length) {
-            updated[index + 1] = { ...updated[index + 1], unlocked: true };
-          }
-          return updated;
-        };
-
-        setGuardianNodes(nodeUpdater);
-        
-        // Play simulated reward ping
-        setTimeout(() => {
-          setSuccessAnimation(false);
-          setQuestSuccess(false);
-          setActiveQuest(null);
-          setCurrentView("map");
-          setAnswerInput("");
-        }, 2500);
-      } else {
-        // If there are more questions, advance currentQuestionIndex by 1 after a short delay
-        setTimeout(() => {
-          advanceQuestion();
-          setQuestSuccess(false);
-          setAnswerInput("");
-        }, 1500);
-      }
-
-    } else {
-      setQuestError(true);
-      setQuestSuccess(false);
-      // Let kid try again (no points deducted - Zero Punishment!)
-      setTimeout(() => {
-        setQuestError(false);
-      }, 1500);
-    }
-  };
-
-  // 7. Node and Quest handlers
   const handleNodeClick = (node: MathNode) => {
     const place = PLACES.find((p) => p.id === node.id);
-    if (place) {
-      if (node.unlocked) {
-        setActivePlace(place);
-        setCurrentView("place");
-      }
-      return;
-    }
-    if (node.unlocked) {
-      setActiveQuest(node);
-      setCurrentView("arena");
+    if (place && node.unlocked) {
+      setActivePlace(place);
+      setCurrentView("place");
     }
   };
 
   const handleFlee = () => {
     if (audioGuide) playToggleSound();
-    setActiveQuest(null);
     setActivePlace(null);
     setCurrentView("map");
   };
@@ -203,21 +110,6 @@ export default function Dashboard() {
         </svg>
       </div>
 
-      {/* Floating Sparkles for Star Shards */}
-      {successAnimation && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none bg-emerald-950/20 backdrop-blur-xs">
-          <div className="text-center p-8 bg-white/95 rounded-3xl shadow-2xl border-4 border-amber-400 max-w-sm animate-bounce">
-            <span className="text-6xl block mb-2">🎉 ✦ 🌟</span>
-            <h3 className="text-3xl font-bold text-emerald-800">Spectacular!</h3>
-            <p className="text-lg text-slate-600 mt-2 font-medium">Correct Equation Answered!</p>
-            <div className="text-2xl font-bold text-amber-500 mt-4 flex items-center justify-center gap-1">
-              +{activeQuest?.reward} Star Shards ✦
-            </div>
-            <p className="text-xs text-emerald-600 mt-1">Lush Numeria grows greener!</p>
-          </div>
-        </div>
-      )}
-
       {/* Playful wooden signpost navbar */}
       <Header
         realm={realm}
@@ -237,15 +129,13 @@ export default function Dashboard() {
           <>
             {/* Left Side Viewport: Adventure Map (75% on desktop / Col span 3) */}
             <AdventureMap
-              title={`${realm === "junior" ? "Junior Realm" : "Guardian Peaks"}: ${
-                trail === "dividing" ? "Crystal Caves" : TRAILS[trail].name
-              }`}
+              title={`${realm === "junior" ? "Junior Realm" : "Guardian Peaks"}: ${TRAILS[trail].name}`}
               tabs={mapTabs.map((tab) => ({
                 ...tab,
                 active: tab.id === trail,
                 onSelect: () => setTrailOf((all) => ({ ...all, [realm]: tab.id })),
               }))}
-              activeNodes={activeNodes}
+              activeNodes={placeNodes}
               onNodeClick={handleNodeClick}
               audioGuide={audioGuide}
             />
@@ -255,7 +145,7 @@ export default function Dashboard() {
                 items didn't do anything yet. */}
             <GardenPanel game={game} realm={realm} />
           </>
-        ) : currentView === "place" && activePlace ? (
+        ) : activePlace ? (
           <PlaceQuest
             key={activePlace.id}
             place={activePlace}
@@ -266,19 +156,7 @@ export default function Dashboard() {
             onExit={handleFlee}
             soundOn={audioGuide}
           />
-        ) : (
-          <BattleArena
-            quest={activeQuest}
-            onFlee={handleFlee}
-            realm={realm}
-            answerInput={answerInput}
-            setAnswerInput={setAnswerInput}
-            handleAnswerSelect={handleAnswerSelect}
-            questSuccess={questSuccess}
-            questError={questError}
-            audioGuide={audioGuide}
-          />
-        )}
+        ) : null}
       </main>
 
       {/* Footer Info */}

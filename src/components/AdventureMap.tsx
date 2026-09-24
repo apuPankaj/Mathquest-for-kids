@@ -218,7 +218,7 @@ export default function AdventureMap({
                   {node.completed
                     ? "Grown! 🌳"
                     : node.unlocked
-                      ? (node.caption ?? node.questions[0]?.problem)
+                      ? node.caption
                       : (node.lockedCaption ?? "Locked 🔒")}
                 </span>
               </div>

@@ -721,9 +721,15 @@ check(openWith([]) === "j1,m1", `nothing mastered: only Pebble Meadows and Windm
 check(openWith(["j1"]) === "j1,j2,s1,m1", `Pebble Meadows mastered opens Whispering Vines and Firefly Falls (got ${openWith(["j1"])})`);
 check(openWith(["j1", "s1"]) === "j1,j2,s1,m1", `Echo Hollow also needs Whispering Vines (got ${openWith(["j1", "s1"])})`);
 check(openWith(["j1", "j2", "s1"]) === "j1,j2,j3,s1,s2,m1", `got ${openWith(["j1", "j2", "s1"])}`);
-check(openWith(["m1"]) === "j1,m1,m2", `Windmill Canyons mastered opens Skip-Stone Stream (got ${openWith(["m1"])})`);
-check(openWith(["m1", "m2", "m3"]) === "j1,m1,m2,m3,m4", `the mountain opens in order (got ${openWith(["m1", "m2", "m3"])})`);
+check(openWith(["m1"]) === "j1,m1,m2,d1", `Windmill Canyons mastered opens Skip-Stone Stream and Crystal Cavern (got ${openWith(["m1"])})`);
+check(openWith(["m1", "m2", "m3"]) === "j1,m1,m2,m3,m4,d1", `the mountain opens in order (got ${openWith(["m1", "m2", "m3"])})`);
 check(lockedReason(place("m2"), () => false) === "Locked 🔒", "multiplication has no partner trail");
+// The caves: dividing waits for the multiplying place at the same level.
+check(lockedReason(place("d1"), () => false) === "After Windmill Canyons", `locked reason: "${lockedReason(place("d1"), () => false)}"`);
+check(openWith(["m1", "d1"]) === "j1,m1,m2,d1", `Glowstone Grotto also needs Skip-Stone Stream (got ${openWith(["m1", "d1"])})`);
+check(openWith(["m1", "m2", "d1"]) === "j1,m1,m2,m3,d1,d2", `got ${openWith(["m1", "m2", "d1"])}`);
+check(openWith(["m1", "m2", "m3", "m4", "d1", "d2", "d3"]).endsWith("d1,d2,d3,d4"), "Sun-Shard Spire opens with Sky Orchard and Lantern Hall");
+check(!openWith(["m1", "m2", "m3", "d1", "d2", "d3"]).includes("d4"), "Sun-Shard Spire waits for Sky Orchard");
 check(!openWith(["j1", "j2", "j3", "s1", "s2", "s3"]).includes("s4"), "Sunstone Bridge waits for Numeria Gate");
 check(openWith(["j1", "j2", "j3", "j4", "s1", "s2", "s3"]).includes("s4"), "Sunstone Bridge opens with Numeria Gate and Grove of Ten");
 check(lockedReason(place("s1"), () => false) === "After Pebble Meadows", `locked reason: "${lockedReason(place("s1"), () => false)}"`);

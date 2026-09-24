@@ -3,6 +3,7 @@ import { RealmName, TRAILS, Trail, isOpen, placesOn, trailsIn } from "@/lib/game
 import { ADDITION } from "@/lib/addition";
 import { SUBTRACTION } from "@/lib/subtraction";
 import { MULTIPLICATION } from "@/lib/multiplication";
+import { DIVISION } from "@/lib/division";
 import { SavedGame, progressOf, startAgain } from "@/lib/savedGame";
 
 // The side panel beside the map: what the child has grown so far, and the
@@ -14,6 +15,7 @@ const SKILL: Record<Trail, (level: 1 | 2 | 3 | 4) => string> = {
   adding: ADDITION.skill,
   subtracting: SUBTRACTION.skill,
   multiplying: MULTIPLICATION.skill,
+  dividing: DIVISION.skill,
 };
 
 export default function GardenPanel({ game, realm }: { game: SavedGame; realm: RealmName }) {
